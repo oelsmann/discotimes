@@ -20,6 +20,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+import re
+
+from codecs import open
+from os.path import dirname, join, realpath
+
 from setuptools import setup, find_packages
 import os
 import sys
@@ -94,68 +99,9 @@ if __name__ == "__main__":
         python_requires=">=3.7",
         install_requires=install_reqs,
         tests_require=test_reqs,
-    )
+        scripts=['discotimes/discofit.py']
+        )
     
     
-    
-#--------------------
 
 
-
-
-
-
-
-
-_here = os.path.abspath(os.path.dirname(__file__))
-
-
-version = {}
-with open(os.path.join(_here, 'somepackage', 'version.py')) as f:
-    exec(f.read(), version)
-
-setup(
-    name='discotimes',
-    version=version['__version__'],
-    description=('Show how to structure a Python project.'),
-    long_description=long_description,
-    author='Bruce Wayne',
-    author_email='bruce.wayne@example.com',
-    url='https://github.com/bast/somepackage',
-    license='MPL-2.0',
-    packages=['somepackage'],
-#   no dependencies in this example
-#   install_requires=[
-#       'dependency==1.2.3',
-#   ],
-#   no scripts in this example
-#   scripts=['bin/a-script'],
-    include_package_data=True,
-    classifiers=[
-        'Development Status :: 5 - Production/Stable',
-        'Intended Audience :: Science/Research',
-        'Programming Language :: Python :: 2.7',
-        'Programming Language :: Python :: 3.6'],
-    )
-
-
-
-packages = find_packages(exclude=("tests",'scripts','sl_bayes.py',
-                                  '*png','*nc','w*ipynb','logs','trash'))
-
-setup(
-    name="sealeveltools",
-    version='0.0.1',
-    description='A project to handle sea level data (altimetry, tide-gauges, models) and statistical exploitation tools',
-    license='',
-    author='Julius Oelsmann',
-    author_email='julius.oelsmann@tum.de',
-    packages=packages,
-    url="https://gitlab.lrz.de/iulius/sea_level_tool.git",
-    install_requires=['scipy', 'matplotlib','pandas','xarray',
-                      'numpy','eofs','seaborn','sympy'],
-    python_requires='>=3.6',
-    #package_data={    },
-    #entry_points={    },
-    #setup_requires=["pytest-runner"],
-)

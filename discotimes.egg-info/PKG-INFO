@@ -1,0 +1,28 @@
+Metadata-Version: 2.1
+Name: discotimes
+Version: 0.0.1
+Summary: Automated estimation of trends, discontinuities and nonlinearities time series using Bayesian Inference
+Home-page: https://github.com/vaucebe/discotimes
+Maintainer: Julius Oelsmann
+Maintainer-email: julius.oelsmann@tum.com
+License: MIT License
+Description: [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+        # discotimes
+        Automated estimation of trends, discontinuities and nonlinearities in vertical land motion using Bayesian Inference. Framework to detecting change points in GNSS, 'altimetry minus tide gauge' and other geophysical time series.
+        
+Platform: UNKNOWN
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Intended Audience :: Science/Research
+Classifier: Topic :: Scientific/Engineering
+Classifier: Topic :: Scientific/Engineering :: Geodesy
+Classifier: Topic :: Scientific/Engineering :: Climate Science
+Classifier: Topic :: Scientific/Engineering :: Sea level Science
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.7
+Description-Content-Type: text/x-rst

@@ -1,0 +1,15 @@
+README.md
+setup.py
+discotimes/__init__.py
+discotimes/discofit.py
+discotimes/discotimes.py
+discotimes/model_settings.py
+discotimes/models.py
+discotimes.egg-info/PKG-INFO
+discotimes.egg-info/SOURCES.txt
+discotimes.egg-info/dependency_links.txt
+discotimes.egg-info/requires.txt
+discotimes.egg-info/top_level.txt
+discotimes/tests/__init__.py
+discotimes/tests/custom_settings.py
+discotimes/tests/test_discotimes.py
