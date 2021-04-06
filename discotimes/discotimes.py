@@ -1,50 +1,108 @@
-from sealeveltools.sl_class import *
-from load_files import *
-from working_scripts.vlad_globcoast_functions import *
+# MIT License
+
+# Copyright (c) 2021 Julius Oelsmann
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+
+# main discotimes class
+
+
+import pandas as pd
+import numpy as np
+import xarray as xr
 from theano.tensor import *
 from theano import tensor
 from arviz import *
 import pickle
-
-from working_scripts.vlame_sub_models import vlam_exp_independent
-
-"""
-changes:
-
-- changepoint position definition
-
-
-todos:
-
-- enhanced model selection!! take care how many traces!
-- seasonal component
-- change how trends are added ...
-- adopt better model
-
-- test better definition of changepoint positions # its clear that vector with shape make independet variables
-- + offset amplitudes
-"""
+from matplotlib import pyplot as plt
+import matplotlib
+import pymc3 as pm
+import arviz as az
+import os
+import datetime
+import copy
+from .models import *
 
 
-class ilame():
-    """
-    Irregular land motion estimator based on bayesian modeling
-    """
     
-    def __init__(self, timser,specs={},sample_specs={},name='ilame',testing=False,test_model='exp'):
-        self.obs=observed(timser)
-        self.specs = specs
-        self.specs['model_type'] = test_model
-        if testing: 
-            if test_model=='exp':          # !! different tested models!
-                self.model = vlam_exp(observed=self.obs,**self.specs)
+    
+    
 
-            if test_model =='exp_independent_cp':
-                self.model = vlam_exp_independent(observed=self.obs,**self.specs)
+class discotimes:
+    """ estimates of DIScontinuities in TIME Series """
+    
+    def __init__(self, timser,settings={},sample_specs={},
+                 name='ilame',testing=False,test_model=None):
+        
+        """Estimate discontinuities (i.e. jumps), trend changes,
+        seasonal signals and AR1 noise in time series
 
-        else:
-            self.model = vlam(observed=self.obs,**self.specs)
+        Parameters
+        ----------
+        timser : pd.Series, xr.Dataarray
+            Time series to be fit with the model
+        settings : dict
+            Dictionary of settings 
+        name : str
+            Name of the data
+        testing : bool
+            Use user-defined pm.model         
+        test_model : pm.model
+            User-defined test-model 
             
+        Attributes
+        ----------
+        obs : discotimes.observed
+            object contains information on input data
+        specs : dict
+            model settings
+        model : pm.model
+            model design to fit data
+        trace :  InferenceData, dict
+            Either full (InferenceData) or compressed (dict) trace,
+            Compressed data provide the mean and std computed over all iterations per chain
+        compressed : bool
+            state of trace compression
+        chain_stats : dict
+            'stats' contains a comparison based on 'loo';
+            Indices represent different chain selections
+        convergence_stats : dict
+            convergence of trend and sigma-noise (should be within +-1)
+        random : list
+            list of selected states (posterior means) of the un-compressed chains
+        name : str
+            Name of the data
+        initial_values : dict
+            Dictionary containing information of known dicontinuity positions and sizes
+
+        """
+        self.obs=observed(timser)
+        self.specs = settings['model_settings']
+        self.sample_specs=settings['run_settings']
+        self.specs['model_type'] = 'standard'
+        if testing: 
+            self.model = test_model(observed=self.obs,**self.specs)
+            self.specs['model_type'] = 'test_model'            
+            # ! U may not be able to use all of the functions (like plotting) with this option
+        else:
+            self.model = discotimes_model(observed=self.obs,**self.specs)            
         self.trace = None
         self.compressed=False
         self.chain_stats = {}
@@ -52,12 +110,32 @@ class ilame():
         self.convergence_stats = {}
         self.random=[]
         self.name = name        
-        self.initial_values={}
-        self.model_type=test_model
+        self.initial_values=settings['model_settings']['initial_values'] # usually empty
         
-    def run(self,n_samples=4000,tune=2000,cores=8,
-            nuts={'target_accept':0.9},return_inferencedata=True,compress=True,**kwargs):
+    def run(self,n_samples=8000,tune=2000,cores=8,nuts={'target_accept':0.9},
+            return_inferencedata=True,compress=True,keep_trace=False,**kwargs):
+            
+        """starts sampling
+        see https://docs.pymc.io/api/inference.html
 
+        Parameters
+        ----------
+        n_samples : int
+            number of samples to draw
+        tune : int
+            number of tunings steps
+        cores : int
+            number of cores to use in parallel = number of chains            
+        nuts : dict
+            NUTS settings
+        return_inferencedata : bool
+            returns Inferencedata object
+        compress : bool
+            compress chains afterwards   
+        **kwargs : dict
+            parameter for pm.sample
+        """
+        
         if 'offsets' in self.initial_values:
             initialize=True
             print('manually initialize with: ')
@@ -66,48 +144,58 @@ class ilame():
                      'positions': self.initial_values['positions']}
         else:
             start={}
-            
-        #if self.model_type =='exp_independent_cp':    # change that again!
-        #    with self.model:
-                # draw 500 posterior samples
 
-        #        self.trace = pm.sample(n_samples,tune=tune,cores=cores,
-        #                               return_inferencedata=return_inferencedata,start=start,**kwargs)
-        #else:
         with self.model:
-            # draw 500 posterior samples
-
             self.trace = pm.sample(n_samples,tune=tune,nuts=nuts,cores=cores,
                                    return_inferencedata=return_inferencedata,start=start,**kwargs)            
         self.check_convergence()   # check for parameter convergence
         
         if compress:
-            self.compress()    
+            self.compress(keep_trace=keep_trace)    
         return self
     
 
     def save(self,save_dir='',allow_pickle=True):
         """
         save object
+        
+        !!!!! include csv output
+        
+        Parameters
+        ----------
+        
+        save_dir: str
+            output directory
+        
         """
+        
         if self.name == '' or save_dir=='':
             raise Exception('Define Object.name and save_dir before saving!')
         else:
             if allow_pickle:
-                with open(save_dir+self.name+'.il', 'wb') as ilame_file:
+                with open(save_dir+self.name+'.dt', 'wb') as ilame_file:
                     pickle.dump(self, ilame_file, pickle.HIGHEST_PROTOCOL)
             else:
                 self.trace.to_nectdf(save_dir+self.name)
 
     def load(save_dir='',name='',allow_pickle=True):
-        """
-        load object
+        """ load object
+        
+        Parameters
+        ----------
+        
+        save_dir: str
+            output directory
+        
+        name : str
+            name of object (without ending .dt)
+            
         """
         if name == '' or save_dir=='':
             raise Exception('Define name and save_dir before loading!')
         else:
             if allow_pickle:
-                with open(save_dir+name+'.il', 'rb') as ilame_file:
+                with open(save_dir+name+'.dt', 'rb') as ilame_file:
                     self = pickle.load(ilame_file)  
             else:
                 self=np.load(save_dir+name+'.npy',allow_pickle=True)
@@ -118,14 +206,20 @@ class ilame():
             return self
         
     def check_convergence(self,parameters=['trend','sigma']):
-        """
-        check geweke scores for paramater
+        """checks geweke scores for paramater
         
-        References
-
+        References:
         Geweke (1992)
         
         statistic should oscillate between +- 1
+        to indicate convergence.
+        This can only be done before compression!
+        
+        Parameters
+        ----------
+        
+        parameters : list
+            list of parameters to test
         """
         stats={}
         for par in parameters:
@@ -135,28 +229,30 @@ class ilame():
             stats[par]=pd.DataFrame(np.asarray(sub_set).T,columns=self.trace.posterior.chain.values)
         self.convergence_stats = stats
         
-        
-    def check_convergence(self,parameters=['trend','sigma']):
-        """
-        check geweke scores for paramater
-        """
-        stats={}
-        for par in parameters:
-            sub_set=[]
-            for i in self.trace.posterior.chain.values:
-                sub_set.append(pm.geweke(self.trace.posterior[par][i,:], intervals=50)[:,1])
-            stats[par]=pd.DataFrame(np.asarray(sub_set).T,columns=self.trace.posterior.chain.values)
-        self.convergence_stats = stats
                 
-    def compress(self,burn=0.,random=50,how='mean'):
-        """
-        compress data
-        compute mean and std-dev along draw dimension
+    def compress(self,burn=0.,random=50,how='mean',keep_trace=False):
+        """compress trace, 
+        reduces data-size by factor ~n_samples
+        
+        computes mean and std-dev along draw dimensions
         1. derive statistics options
-        2. random draws
+        2. random draws from chains
         3. mean, std of trace
         4. set compressed to True
+        
+        Parameters
+        ----------
+        
+        burn : int
+            reject samples at the beginning     
+        random : int
+            step size for selecting selected samples from chains
+        how : str
+            'mean' or 'median' as expectation 
+        keep_trace : bool
+            keep old full trace 
         """
+        
         self.get_best_model(return_=False) # set and safe statistics
 
         RANDOM=[]
@@ -173,142 +269,59 @@ class ilame():
 
             COMPRESSED_TRACE[op]=az.InferenceData(posterior=elements[0],sample_stats=elements[1],
                                     log_likelihood=elements[2])            
-
+        if keep_trace:
+            COMPRESSED_TRACE['full_trace']=copy.deepcopy(self.trace)
         self.trace=COMPRESSED_TRACE
 
         self.compressed = True
         print('successfully compressed trace')
     
-    def correct_best_model(self,crit='standard',return_stats=False,return_=True):
-        """
-        to be deleted this corrects the old wrong stats and adds new
-        
-        returns best chain or mean of best chains according to different criteria
-
-        criteria:
-
-        crit = 
-        'standard': Select best model (according to waic) when the number 
-            of estimated offset is equal to the average number of all chains
-        'all': Select best model (according to waic) among all chains
-
-        'lowest_p': Select best model based on the lowest p_value
-
-        """
-        all_={}
-        nums=[]
-        # average number of changepoints across all realizations
-        for i in range(len(self.trace['mean'].posterior.chain)):  
-            act_numb=np.sum(((self.trace['mean'].posterior['mult'][i,:]> 0.5)*1).values)
-            nums.append(act_numb)  
-        stats=copy.deepcopy(self.chain_stats['stats'])
-        stats['chain_index']=np.asarray(stats.index.values).astype(int)
-        stats=stats.sort_values(by='chain_index')
-        stats['num']=nums
-        stats=stats.sort_values(by='rank')
-
-        # crit='standard'   # is ensemble mean of changepoints and then best p_loo
-
-        i=stats['num'].mean().round()
-        while stats.where(stats['num']==i).dropna().empty:
-            i=i-1
-        best_chain_standard=int(stats.where(stats['num']==i).dropna().iloc[0].name)
-
-        # crit='all' # is best p_loo
-        best_chain_all=int(stats.iloc[0].name)
-
-        # crit='lowest_p' # is lowest number of effective parameters
-        best_chain_lowest_p=int(stats.where(stats['p_loo']==stats['p_loo'].min()).dropna().iloc[0].name)
-
-        self.chain_stats_update={'stats':stats,
-                          'standard':best_chain_standard,
-                          'all':best_chain_all,
-                          'lowest_p':best_chain_lowest_p}
-        if return_:
-            best_chain=self.chain_stats_update['crit']
-
-            if return_stats:
-                return best_chain,stats
-            else: 
-                return best_chain
-            
-    def get_best_model_update(self,crit='standard',return_stats=False,return_=True):   # also update this
-        """
-        returns best chain or mean of best chains according to different criteria
-
-        criteria:
-
-        crit = 
-        'standard': Select best model (according to waic) when the number 
-            of estimated offset is equal to the average number of all chains
-        'all': Select best model (according to waic) among all chains
-
-        'lowest_p': Select best model based on the lowest p_value
-
-        """
-        all_={}
-        nums=[]
-
-        # average number of changepoints across all realizations
-        for i in range(len(self.trace.posterior.chain)):
-            new=self.trace.sel(chain=[i])    
-            act_numb=np.sum(((self.trace.sel(chain=[i]).posterior['act_number'].mean(dim='draw')> 0.5)*1).values)
-            all_[str(i)]=new
-            nums.append(act_numb)  
-        stats=pm.compare(all_)
-        stats['num']=nums
-
-        # crit='standard'   # is ensemble mean of changepoints and then best p_loo
-
-        i=stats['num'].mean().round()
-        while stats.where(stats['num']==i).dropna().empty:
-            i=i-1
-        best_chain_standard=int(stats.where(stats['num']==i).dropna().iloc[0].name)
-
-        # crit='all' # is best p_loo
-        best_chain_all=int(stats.iloc[0].name)
-
-        # crit='lowest_p' # is lowest number of effective parameters
-        best_chain_lowest_p=int(stats.where(stats['p_loo']==stats['p_loo'].min()).dropna().iloc[0].name)
-
-        self.chain_stats={'stats':stats,
-                          'standard':best_chain_standard,
-                          'all':best_chain_all,
-                          'lowest_p':best_chain_lowest_p}
-        if return_:
-            best_chain=self.chain_stats['crit']
-
-            if return_stats:
-                return best_chain,stats
-            else: 
-                return best_chain
-
     def get_best_model(self,crit='standard',return_stats=False,return_=True):
+        """computes model statistics and returns different chain selections
+        
+        Parameters
+        ----------
+        
+        crit : int
+            chain selection criterion:
+            - 'standard' (default): Select best model (according to loo) when the number 
+                of estimated offset is equal to the average number of all chains 
+            - 'all': Select best model (according to loo) among all chains
+            - 'lowest_p': Select best model based on the lowest p_value 
+                (lowest estimated effective number of parameter)          
+        return_stats : bool
+            returns statistics
+        return_ : bool
+            return data
+        
+        Returns
+        -------
+        
+        stats : pd.DataFrame
+            pm.compare - statistics
+            see Vehtari A, Gelman A, Gabry J (2017) Practical bayesian 
+                model evaluation using leave-one-out cross-validation and
+                waic. Statistics and Computing 27, DOI 10.8931007/s11222-016-9696-4
+            or https://docs.pymc.io/notebooks/model_comparison.html
+        
         """
-        returns best chain or mean of best chains according to different criteria
-
-        criteria:
-
-        crit = 
-        'standard': Select best model (according to waic) when the number 
-            of estimated offset is equal to the average number of all chains
-        'all': Select best model (according to waic) among all chains
-
-        'lowest_p': Select best model based on the lowest p_value
-
-        """
+        
         all_={}
         nums=[]
         mean_act_number = np.round(self.trace.posterior.mean(dim='draw').mean(dim='chain')['act_number'])
         # average number of changepoints across all realizations
         for i in range(len(self.trace.posterior.chain)):
-            new=self.trace.sel(chain=[i])    
-            act_numb=np.round(self.trace.sel(chain=[i]).posterior['act_number'].mean().values)
+            new=self.trace.sel(chain=[i]) 
+            act_numb=np.sum(((self.trace.posterior['mult'].mean(dim='draw')[i,:]> 0.5)*1).values)
             all_[str(i)]=new
             nums.append(act_numb)  
         stats=pm.compare(all_)
-        stats['num']=nums
 
+
+        stats['chain_index']=np.asarray(stats.index.values).astype(int)
+        stats=stats.sort_values(by='chain_index')
+        stats['num']=nums
+        stats=stats.sort_values(by='rank')
         # crit='standard'   # is ensemble mean of changepoints and then best p_loo
 
         i=stats['num'].mean().round()
@@ -323,18 +336,15 @@ class ilame():
         best_chain_lowest_p=int(stats.where(stats['p_loo']==stats['p_loo'].min()).dropna().iloc[0].name)
 
         self.chain_stats={'stats':stats,
-                          'standard':best_chain_standard,
-                          'all':best_chain_all,
-                          'lowest_p':best_chain_lowest_p}
+                          'avg_best_loo':best_chain_standard,
+                          'best_loo':best_chain_all,
+                          'lowest_p_loo':best_chain_lowest_p}
         if return_:
-            best_chain=self.chain_stats['crit']
-
             if return_stats:
                 return best_chain,stats
             else: 
                 return best_chain
-        
-        
+
         
     def plot_chain(self,ax,chains='all',num=50,burn=1000):
         """
@@ -382,15 +392,18 @@ class ilame():
         #{'ymod':y_mod,'trend':trend,'post':post,'offset_change':offset_change} 
         y_model=y_model_data['ymod']
         y_mean=np.mean(y_model)
+        y_std=np.std(y_model)
+        
         index=self.obs.series_clean.index
         off_x=(index[-1]-index[0])/100
 
 
-        ax.plot(index,y_model,**kwargs)
+        ax.plot(index,y_model,alpha=alpha,**kwargs)
         
-        alpha_in=0.2
-        if kwargs['label'] == 'best chain':
-            alpha_in=alpha
+        #alpha_in=0.2
+        #if kwargs['label'] == 'best_loo':
+        alpha_in=alpha
+        
         if isinstance(y_model_data['trend'], float):
             trends=y_model_data['trend']
             ax.text(index[0]+off_x,y_mean, str(np.round(trends,3)),alpha=alpha_in)
@@ -405,10 +418,13 @@ class ilame():
                         add_=0
                     else:
                         add_=1
+                    sign=-1
                     for i in range(len(trends)):
-
-                        ax.text(positions[i]+off_x,y_mean, str(np.round(trends[i],3)),alpha=alpha_in)
-                    ax.text(positions[0]+off_x,y_mean, str(np.round(trends[0],3)),alpha=alpha_in) 
+                        
+                        ax.text(positions[i]+off_x,y_mean+0.5*y_std*sign, str(np.round(trends[i],3)),alpha=alpha_in)
+                        sign=sign*-1
+                    sign=-1
+                    ax.text(positions[0]+off_x,y_mean+0.5*y_std*sign, str(np.round(trends[0],3)),alpha=alpha_in) 
 
         #ax.plot(self.obs.x,y_model_data['trend']*self.obs.x+y_model_data['offset_change'],color='orange',alpha=0.5)
             if lines_max:
@@ -420,9 +436,10 @@ class ilame():
     
     def plot(self,chains='all',other=None,
              label_other='gps',normalize=False,save=False,
-             plot_all_chains=True,save_dir='',save_name='',crit='standard'):
+             plot_all_chains=True,save_dir='',save_name='',crit='best_loo'):
         """
         Parameters 
+        ----------
         chains: str, default: 'all'
             which chains to plot; 'all','best'
 
@@ -454,89 +471,29 @@ class ilame():
         
         #axs[0].plot(self.obs.series_clean,color='orange',label='observed')
         kwargs={'color':'blue','label':'best chain'}
-        axs[1]=self.plot_chain_clean(axs[1],self.chain_stats[crit],**kwargs)
+        #axs[1]=self.plot_chain_clean(axs[1],self.chain_stats[crit],alpha=1.,**kwargs)
+        plt_text=True
         if plot_all_chains:
-            for i in range(len(self.trace['mean'].posterior.chain)):
-                kwargs={'color':'blue','label':'chain '+str(i),'alpha':0.2}
+            for i,alpha in zip(self.chain_stats['stats'].index.values.astype(int),np.linspace(1,0.1,len(self.chain_stats['stats']))):
+                if self.chain_stats[crit]!=i:
+                    plt_text=False
+                kwargs={'color':'blue','label':'chain '+str(i),'alpha':alpha,'plt_text':plt_text}
                 axs[1]=self.plot_chain_clean(axs[1],i,**kwargs)
         axs[0].legend()
         axs[1].legend(ncol=5)
 
-
-        
         axs[1].set_xlabel('year')
         axs[0].set_ylabel('Height')
         axs[1].set_ylabel('Height')
         if save:
             plt.savefig(save_dir+save_name)
     
-    def trend_average(self,opt='first'):
-        """
-        to be testes
-
-
-        returns different trend estimates based on different assumptions
-
-        1. solely first linear part
-        2. combined linear parts
-        3. combined linear part + nonlinear part with nonlinear part explaining less than 1 mm/year
-
-
-        """   
-
-        best_chain=self.chain_stats['standard']
-        y_model_data=self.ymod(best_chain,denormalize=True,**self.specs)
-        y_model=y_model_data['ymod']
-        y_mean=np.mean(y_model)
-        if opt=='first':
-            off_x=0.2
-            trend_err=self.read_chain('trend',best_chain,func='mean')
-            positions=np.sort(self.read_chain('positions',best_chain))
-            if isinstance(y_model_data['trend'], float):
-                trends=y_model_data['trend']
-                trend1,trend2=trends
-                # only one trend 
-            else:
-                trends=pd.DataFrame(y_model_data['trend']).drop_duplicates().values.squeeze()
-                trends_err=self.read_chain('trend_inc',best_chain,func='std')
-                #1. option 
-                print(trends)
-                if trends.shape == ():
-                    trend1 = trends          
-                else:
-                    trend1 = trends[0]
-                """
-                etau_=self.read_chain('etau',best_chain,func='mean')
-                c_=self.read_chain('c_constant',best_chain,func='mean')
-
-                for i range(len(trends[1:])):
-                    c=c_[i-1]
-                    etau=etau_[i-1]
-                    nonlin = ps_func(c,etau,1)*self.obs.std 
-                    if nonlin < 0.00101:
-                """
-            return trend1
-        elif opt=='av':
-            trends=y_model_data['trend_v'][y_model_data['trend_v']!=0]
-            err=y_model_data['trend_err_v'][y_model_data['trend_err_v']!=0]
-            weights=(1/err)/np.sum(1/err)
-            av_trend=np.average(trends, weights=weights)
-            return av_trend
-    
-    def read_chain(self,parameter,chain,func='mean'):
-        data=self.trace['func'].sel(chain=[chain]).posterior.squeeze(dim='chain')
-        out=data[parameter].values.squeeze()
-
-        if data[parameter].shape != ():
-            print(out)
-            print(hasattr(out, '__len__'))
-            act_number=data.act_number.values
-            out=out[:int(np.round(act_number))]
-        return out
-    
     def positions_to_date(self,positions):
-        """
-        return vector:
+        """converts numeric positions to dates
+
+        Returns
+        --------
+        vector : 
         
         first element is starting date of observations
         the rest are changepoint-positions or not fitted positions 
@@ -549,42 +506,54 @@ class ilame():
         for pos in positions:
             args_m.append(np.argmin(abs(x-pos)))
         return self.obs.series_clean.index[args_m]
-    
+
     def ymod(self,chain,n_changepoints=5,denormalize=True,change_trend=True,
-             trend_inc=None,change_offsets=True,post_seismic=False,annual_cycle=False,trend_independent=False,
-             **kwargs):
+             trend_inc=None,change_offsets=True,post_seismic=False,
+             trend_independent=False,annual_cycle=False,**kwargs):
+
+        """convert model samples to dictionary of parameters
+
+        Parameters
+        ----------
+
+        chain : int
+            number of chain to look at
+        n_changepoints : int 
+            maximum allowed number of changepoints
+        denormalize : bool
+            re-scale data
+
+        ... other model settings parameters (see model_settings)
+
+        Returns
+        --------
+        
+        dictionary of parameters
+
+        """
 
         data=self.trace['mean'].sel(chain=[chain]).posterior.squeeze(dim='chain')
         data_std=self.trace['std'].sel(chain=[chain]).posterior.squeeze(dim='chain')        
-        
-        if self.specs['model_type'] == 'exp_independent_cp':
-            mult = ((data['mult']> 0.5)*1).values
-            num = np.sum(mult)
-        else:    
-            mult=np.zeros(n_changepoints)  
-            arr=np.arange(n_changepoints)+0.5
+        mult = ((data['mult']> 0.5)*1).values # 1,0 vector of changepoints
+        num = np.sum(mult)
 
-            num=data.act_number.values
-            mult[arr<num]=1
         offsets=data.offsets.values*mult
         offset=data.offset
         x=self.obs.x
 
         if not change_offsets:
             offsets=offsets*0
-        s = data.positions.values
-        positions=s
-        A = (x[:, None] >= s) * 1
+        positions = data.positions.values
+        A = (x[:, None] >= positions) * 1
         offset_change = det_dot(A, offsets)
         trend=data.trend.values
         trend_err=data_std.trend.values
-        
         trend_v=trend
         trend_err_v=trend_err
         if change_trend:      
             trend_inc=data.trend_inc.values*mult
             trend_inc_err=data_std.trend_inc.values*mult 
-            
+
             if trend_independent: # no autocorrelation in trend itself
                 trend_v=copy.deepcopy(np.append(trend_v, (trend_inc+trend_v)*mult))
                 trend_err_v=copy.deepcopy(np.append(trend_err_v, trend_inc_err))
@@ -604,13 +573,11 @@ class ilame():
                 A_gamma=det_dot(A, gamma)
 
             offset_change=offset_change+A_gamma
-         
-        
             trend_v_sorted=pd.DataFrame(trend).drop_duplicates()
             start_pos=self.obs.series_clean.index[trend_v_sorted.index.values]
             end_pos=self.obs.series_clean.index[np.roll(trend_v_sorted.index.values-1,shift=-1)]
             diff=end_pos-start_pos
-            
+
             # trend uncertainty and offsets
             trend_inc_err=data_std.trend_inc.values*mult 
             ff = pd.DataFrame(np.vstack([positions*mult,trend_inc_err*mult,offsets*mult]).T,columns=['pos','trend_inc_err','offsets'])
@@ -629,7 +596,7 @@ class ilame():
                 full_err=pd.concat([ff,ff2.iloc[0:1]]).sort_values(by='pos')
 
 
-        
+
         if post_seismic:
             new=(A*x[:,None])-s
             #new[new<0]=0
@@ -641,16 +608,14 @@ class ilame():
         if annual_cycle:
             annual=data.annual.values
             y_mod=y_mod+annual
-        #plt.plot(x,y_mod)
-        #plt.plot(x,y)
 
-        if self.specs['model_type'] == 'exp_independent_cp' and change_trend and change_offsets:
+        if change_trend and change_offsets:
             trend_v =np.append(trend_v[0],trend_v[1:][mult==1])
             positions = positions[mult==1]
             trend_err_v=np.append(trend_err_v[0],trend_err_v[1:][mult==1])
             positions_v=self.positions_to_date(positions)
 
-        elif self.specs['model_type'] == 'exp_independent_cp' and not change_trend and not change_offsets:
+        elif not change_trend and not change_offsets:
             trend_v =np.asarray(trend)
             trend_err_v=np.asarray(trend_err_v)
             positions_v=self.obs.series_clean.index[0]  
@@ -662,11 +627,9 @@ class ilame():
             diff=end_pos-start_pos        
             full_err = pd.DataFrame(np.vstack([0,trend_err,offset,start_pos]).T,columns=['pos','trend_inc_err','offsets','real_p'])
 
-
-            
         else:
             positions_v=self.positions_to_date(positions*mult)
-            
+
         if denormalize:
             return {'ymod':y_mod*self.obs.std,'trend':trend*self.obs.std,
                     'post':post*self.obs.std,'offset_change':(offset_change+data.offset.values)*self.obs.std,
@@ -677,18 +640,26 @@ class ilame():
                     'offsets':full_err['offsets'].values*self.obs.std}          
         else:
             return {'ymod':y_mod,'trend':trend,'post':post,'offset_change':offset_change+data.offset.values}  
-
+        
+        
     def approximate_initial_offsets(self,detection_threshold=15,
-                                detection_resolution=4,
-                                method='diff'):
-        """
-        function to make a first guess of number and positions of offsets:
+                                detection_resolution=4):
+        
+        """function to make a first guess of positions and sizes of offsets:
 
         * Based on consecutive differences
         * offsets are sorted by their probability
         * offsets are detected when a abs(cons.difference) is higher than
           detection_threshold times the median of all cons.differences
         * choose detection_threshold=15 to detect very obvious offsets
+        
+        Parameters
+        ----------
+        detection_threshold : int
+            fraction of minimum consecutive difference to detect cp 
+            (relative to all cons. differences)
+        detection_resolution : int
+            smoothing of the data before computing average cons. diff. ranges
 
         """
         new_series=pd.Series(self.obs.y,index=self.obs.series_clean.index)
@@ -734,45 +705,156 @@ class ilame():
 
             offsets[:number_mu]=offsets_approx
             positions[:number_mu]=pos_approx
-            if self.specs['model_type']=='exp':          # !! different tested models!
-                
-                INIT_VALS={'n_changepoints':n_changepoints,'number_mu':number_mu,'positions':positions,'offsets':offsets}
-                self.initial_values=INIT_VALS #these will automatically be included in initialization
-                self.specs['n_changepoints']=n_changepoints
-                self.specs['number_mu']=number_mu
-                self.specs['initial_values']=INIT_VALS
-                self.specs['estimate_number_mu']=False
-                self.specs['estimate_offset_sigma']=False   
-                self.model = vlam_exp(observed=self.obs,**self.specs)
-
-            if self.specs['model_type'] =='exp_independent_cp':
-                
+            if self.specs['model_type'] =='standard':
                 INIT_VALS={'n_changepoints':n_changepoints,'p_':p_,'positions':positions,'offsets':offsets}
-                self.initial_values=INIT_VALS #these will automatically be included in initialization
+                if self.initial_values=={}:       # if not defined yet
+                    self.initial_values=INIT_VALS # these will automatically be included in initialization
                 self.specs['n_changepoints']=n_changepoints
                 self.specs['p_']=p_
                 self.specs['initial_values']=INIT_VALS
                 self.specs['estimate_number_mu']=False
                 self.specs['estimate_offset_sigma']=False   
-                self.model = vlam_exp_independent(observed=self.obs,**self.specs)
+                self.model = discotimes_model(observed=self.obs,**self.specs)
+    
+    def to_nc(self):
+        """converts output to xr.DataSet ~ netcdf 
+        
+        """
+        ALL_DATA=np.empty([21,1,self.sample_specs['cores'],self.specs['n_changepoints']+1])*np.nan
+        iindex=0
+        all_stats=self.chain_stats    
+        bchain=all_stats['best_loo']
+        bchain_lowp=all_stats['lowest_p_loo']
+        bchain_standard=all_stats['avg_best_loo']        
+        stats=all_stats['stats']
+        sta=stats.sort_index()
+        last_obs=(self.obs.series_clean.index[-1]-pd.Timestamp('1950')).days
+        first_obs=(self.obs.series_clean.index[0]-pd.Timestamp('1950')).days 
+        for chain in np.arange(self.sample_specs['cores']):
+            ymod=self.ymod(chain,**self.specs)
+            trend_v=pd.DataFrame(ymod['trend']).drop_duplicates().values.flatten()
 
+            ALL_DATA[0, iindex, chain, :len(trend_v)]=trend_v # ymod['trend_v']
+            ALL_DATA[1, iindex, chain, :len(ymod['trend_err_v'])]=ymod['trend_err_v']    
+            ALL_DATA[2, iindex, chain, 0]=ymod['act_num']      
+            ALL_DATA[3, iindex, chain, :len(ymod['positions_v'])]=ymod['positions_v']  
+
+            ALL_DATA[5, iindex, chain, 0]=sta['loo'][chain]   
+            ALL_DATA[6, iindex, chain, 0]=sta['p_loo'][chain]
+            # new values bro!
+            ALL_DATA[10, iindex, chain, :len(ymod['trend_v_sorted'])]=ymod['trend_v_sorted']
+            ALL_DATA[11, iindex, chain, :len(ymod['trend_v_sorted'])]=(ymod['start_pos']-pd.Timestamp('1950')).days.astype(float)
+            ALL_DATA[12, iindex, chain, :len(ymod['trend_v_sorted'])]=(ymod['end_pos']-pd.Timestamp('1950')).days.astype(float)
+            ALL_DATA[13, iindex, chain, :len(ymod['trend_v_sorted'])]=ymod['diff'].days.astype(float)
+
+            ALL_DATA[19, iindex, chain, :len(ymod['trend_un'])]=ymod['trend_un']
+            ALL_DATA[20, iindex, chain, :len(ymod['offsets'])]=ymod['offsets']
+
+        ALL_DATA[7, iindex, 0, 0]=last_obs
+        ALL_DATA[8, iindex, 0, 0]=first_obs      
+        ALL_DATA[4, iindex, 0, 0]=bchain   
+        ALL_DATA[14, iindex, 0, 0]=bchain_lowp   
+        ALL_DATA[17, iindex, 0, 0]=bchain_standard
+        ALL_DATA[9, iindex, :, 0]=(self.trace['mean'].posterior['sigma']*self.obs.std).values
+
+        ALL_DATA[18, iindex, :, 0]=self.convergence_stats['trend'].iloc[-1].values  # geweke convergence stats
+
+
+        if 'accepted' in self.trace['mean'].sample_stats:
+            ALL_DATA[15, iindex, :, 0]= self.trace['mean'].sample_stats['accepted'].values
+        elif 'mean_tree_accept' in self.trace['mean'].sample_stats:
+            ALL_DATA[15, iindex, :, 0]= self.trace['mean'].sample_stats['mean_tree_accept'].values
+
+        ALL_DATA[16, iindex, :, 0]= self.trace['mean'].sample_stats['diverging'].values
+
+        ds = xr.Dataset({'trend': (['x','chain', 'v_dim'],  ALL_DATA[10,:,:,:]), 
+                     'trend_err': (['x','chain', 'v_dim'],  ALL_DATA[19,:,:,:]),                     
+                     'offsets': (['x','chain', 'v_dim'],  ALL_DATA[20,:,:,:]),                                                                  
+                     'start_pos': (['x','chain', 'v_dim'],  ALL_DATA[11,:,:,:]), 
+                     'end_pos': (['x','chain', 'v_dim'],  ALL_DATA[12,:,:,:]),
+                     'diff': (['x','chain', 'v_dim'],  ALL_DATA[13,:,:,:]), 
+                     'number_cp': (['x','chain'],  ALL_DATA[2,:,:,0]),
+                     'best_loo': (['x'],  ALL_DATA[4,:,0,0]), 
+                     'lowest_p_loo': (['x'],  ALL_DATA[14,:,0,0]),
+                     'avg_best_loo': (['x'],  ALL_DATA[17,:,0,0]),
+                     'loo': (['x','chain'],  ALL_DATA[5,:,:,0]), 
+                     'p_loo': (['x','chain'],  ALL_DATA[6,:,:,0]),
+                     'last_obs': (['x',],  ALL_DATA[7,:,0,0]), 
+                     'first_obs': (['x'],  ALL_DATA[8,:,0,0]),
+                     'sigma_noise': (['x','chain'],  ALL_DATA[9,:,:,0]),
+                     'accepted': (['x','chain'],  ALL_DATA[15,:,:,0]),
+                     'geweke_converge': (['x','chain'],  ALL_DATA[18,:,:,0]),    
+                     'diverging': (['x','chain'],  ALL_DATA[16,:,:,0])},
+
+                      coords={'name': (['x'], [self.name]),
+                        'chain':np.arange(self.sample_specs['cores'])})  
+
+        t_attrs={'units' : "days since 1950-01-01 00:00:00",'calendar' : "proleptic_gregorian"}
+        ds['start_pos'].attrs=t_attrs
+        ds['end_pos'].attrs=t_attrs
+        ds['last_obs'].attrs=t_attrs
+        ds['first_obs'].attrs=t_attrs
+        ds['trend'].attrs={'units' : "input unit/year",'long_name' : "Piecewise Trend"}
+        ds['trend_err'].attrs={'units' : "input unit/year",'long_name' : "Trend uncertainty (1-sigma)"}
+        ds['offsets'].attrs={'units' : "input unit",'long_name' : "discontinuity size"}
+        ds['number_cp'].attrs={'units' : "",'long_name' : "number of change points"}
+
+        ds['diff'].attrs={'units' : "days",'long_name' : "position difference"}
+
+
+        ds.attrs=self.specs
+        ds.attrs['info']="Data created with DiscoTimeS on "+str(datetime.date.today())
+        return ds
 
 class observed():
+    
+    """ class to handle input data"""
+
     def __init__(self, timser):
+        """Normalizes input data
+
+        Parameters
+        ----------
+        timser : pd.Series, xr.Dataarray
+            Time series to be fit with the model
+        
+        
+        Attributes
+        ----------
+        x : np.array
+            numeric 'time steps' in years; starts from zero
+        y : np.array
+            normalized data       
+        std : float
+            standard deviation of original data
+        index : np.array
+            absolute 'time step' position of original data
+        series_clean : pd.Series
+            normalized and de-NaNed time series
+        X_mat : np.array
+            Matrix used to fit multi-year monthly means
+        freq : str
+            time series frequency; 'D','W','M','Y'
+        """  
+        
         self.series = timser
         self.x,self.y,self.std,self.index,self.series_clean,self.X_mat,self.freq = self.normalise()
 
     def normalise(self,normalize=True,rmv_nan=True):
-        """
-        normalizes time-series for state-space model approach
-        divide by std and shift starting point to zero    
+        """ normalizes time-series for Bayesian model
+        divides by 600D rolling median std 
+        and shifts starting point to zero    
         
-        Parameter:
-
-        data: xr with monthly resolution
-
-        returns: x,y,norm_factor
-
+        Parameters
+        ----------
+        normalize : bool
+            set normalize    
+        rmv_nan : bool
+            remove nans
+      
+        Returns
+        ----------  
+        x,y,std_data,index,series,X_mat,freq 
         """
         # remove nans from start and end
         if isinstance(self.series, pd.Series):
@@ -780,6 +862,7 @@ class observed():
         else:
             df=pd.Series(self.series.values.squeeze(),index=self.series.time.values)
         freq=pd.infer_freq(df.index)[:1]
+        print('Normalize data')
         print('Frequency: '+freq)
         first_idx = df.first_valid_index()
         last_idx = df.last_valid_index()
@@ -822,523 +905,54 @@ class observed():
         X_mat=(months == np.repeat(month[np.newaxis,:], 12, axis=0).T)*1
         return x,y,std_data,index,series,X_mat,freq     
     
+
+def file_reader(file,variable='auto',resample='D'):
     
-                
-class vlam_manuela(pm.model.Model):
-    # 1) override init
+    """ read different file types
+    
+    'txt','nectdf (.nc)','tenv3', 'txyz2'
+    
+    Parameters
+    ----------
+    
+    file : str
+        location of file
+    variable : str
+        variable to read from file 
+        (default: 'auto', selects the first availabe variable/column)
+        
     """
-    different offset properties
-    
-    """
-    def __init__(self, observed=None,name='', model=None,change_trend=False,n_changepoints=5,number_mu=0.1,
-                     offsets_opt='normal',offsets_std=1,
-                      add_to_num=0.,sigma_noise=1.,trend_inc_sigma=0.01,
-                      change_offsets=True,estimate_offset_sigma=False,estimate_trend_inc_sigma=False,
-                      estimate_number_mu=False,n_samples=500,target_accept=0.8,post_seismic=True):
 
-        super().__init__(name,model)
-
-        
-        x=observed.x
-        y=observed.y
-            
-        xmin=np.min(x)
-        xmax=np.max(x)
-
-        # Priors for unknown model parameters
-        offset = pm.Normal('offset', mu=0, sigma=1)
-        trend = pm.Normal('trend', mu=0, sigma=1) 
-        sigma = pm.HalfNormal('sigma', sigma=sigma_noise)   
-
-        if estimate_number_mu:
-            act_number_sigma = pm.HalfNormal('act_number_sigma', sigma=number_mu)  
-            act_number=pm.Poisson('act_number', mu=act_number_sigma) -add_to_num
-        else:
-            act_number=pm.Poisson('act_number', mu=number_mu) -add_to_num
-
-        if not change_offsets:
-            mult_offsets=0.
-        else:
-            mult_offsets=1. 
-        if offsets_opt=='normal':
-            # positive and negative offsets ...
-            vec_ones=np.asarray([1,-1]*20)[:n_changepoints]
-
-            
-            
-            if estimate_offset_sigma:
-                offset_sigma = pm.HalfNormal('offset_sigma', sigma=offsets_std)   
-                offsets = pm.Normal('offsets', mu=1, sigma=offset_sigma, shape=n_changepoints)*mult_offsets*vec_ones              
-            else:
-                offsets = pm.Normal('offsets', mu=1, sigma=offsets_std, shape=n_changepoints)*mult_offsets*vec_ones   
-
-        mult=np.zeros(n_changepoints)
-        arr=np.arange(n_changepoints)+0.5
-
-        mult = (arr<act_number) *1 #[arr<act_number]=1
-        offsets=offsets*mult
-        mu_pos=pm.Uniform('mu_pos', lower=xmin, upper=xmax, shape=n_changepoints) 
-
-        s = pm.Normal('positions',  mu=mu_pos, sigma=5, shape=n_changepoints)
-
-        A = (x[:, None] >= s) * 1
-        offset_change = det_dot(A, offsets)
-
-        if change_trend:
-            if estimate_trend_inc_sigma:
-                trend_inc_sigma_est = pm.HalfNormal('trend_inc_sigma_est', sigma=trend_inc_sigma)  
-                trend_inc = pm.Normal('trend_inc', mu=0, sigma=trend_inc_sigma_est,shape=n_changepoints)
-
-            else:
-
-                trend_inc = pm.Normal('trend_inc', mu=0, sigma=trend_inc_sigma,shape=n_changepoints)
-            trend_inc=trend_inc*mult
-            gamma = -s* trend_inc
-
-            trend_inc=det_dot(A, trend_inc)
-            trend=trend+trend_inc
-            A_gamma=det_dot(A, gamma)
-            offset_change=offset_change+A_gamma
-        if post_seismic:
-            # add exponential term to every trend section
-            c_constant=pm.Normal('c_constant', mu=0, sigma=2,shape=n_changepoints)
-            etau=pm.HalfNormal('etau', sigma=3,shape=n_changepoints)  
-            t_vec=(A*x[:,None])-s
-            inside_function=((t_vec-t_vec*[t_vec<0]).squeeze()/etau)              
-            post_seismic=sum(c_constant*(1-np.exp(-((t_vec-t_vec*[t_vec<0]).squeeze()/etau)))*mult,axis=1)
-            offset_change=offset_change+post_seismic            
-        mu = pm.Deterministic("mu", offset_change + trend*x + offset)        
-        Y_obs = pm.Normal('Y_obs', mu=mu, sigma=sigma, observed=y)
- 
-
-                
-class vlam_2(pm.model.Model):
-    """
-    2. development:
-    
-    changes:
-    
-    """
-    def __init__(self, observed=None,name='', model=None,change_trend=False,n_changepoints=5,number_mu=0.1,
-                     offsets_opt='normal',offsets_std=1,
-                      add_to_num=0.,sigma_noise=1.,trend_inc_sigma=0.01,annual_cycle=False,
-                      change_offsets=True,estimate_offset_sigma=False,estimate_trend_inc_sigma=False,
-                      estimate_number_mu=False,n_samples=500,target_accept=0.8,post_seismic=True):
-
-        super().__init__(name,model)
-
-        
-        x=observed.x
-        y=observed.y
-            
-        xmin=np.min(x)
-        xmax=np.max(x)
-        
-        
-        X_mat=observed.X_mat
-        
-        # Priors for unknown model parameters
-        offset = pm.Normal('offset', mu=0, sigma=1)
-        trend = pm.Normal('trend', mu=0, sigma=1) 
-        sigma = pm.HalfNormal('sigma', sigma=sigma_noise)   
-
-        if estimate_number_mu:
-            act_number_sigma = pm.HalfNormal('act_number_sigma', sigma=number_mu)  
-            act_number=pm.Poisson('act_number', mu=act_number_sigma) -add_to_num
-        else:
-            act_number=pm.Poisson('act_number', mu=number_mu) -add_to_num
-
-        if not change_offsets:
-            mult_offsets=0.
-        else:
-            mult_offsets=1. 
-        if offsets_opt=='normal':
-            if estimate_offset_sigma:
-                offset_sigma = pm.HalfNormal('offset_sigma', sigma=offsets_std)   
-                offsets = pm.Normal('offsets', mu=0, sigma=offset_sigma, shape=n_changepoints)*mult_offsets              
-            else:
-                offsets = pm.Normal('offsets', mu=0, sigma=offsets_std, shape=n_changepoints)*mult_offsets  
-
-        mult=np.zeros(n_changepoints)
-        arr=np.arange(n_changepoints)+0.5
-
-        mult = (arr<act_number) *1 #[arr<act_number]=1
-        offsets=offsets*mult
-        mu_pos=pm.Uniform('mu_pos', lower=xmin, upper=xmax, shape=n_changepoints) 
-
-        s = pm.Normal('positions',  mu=mu_pos, sigma=5, shape=n_changepoints)
-
-        A = (x[:, None] >= s) * 1
-        offset_change = det_dot(A, offsets)
-
-        if change_trend:
-            if estimate_trend_inc_sigma:
-                trend_inc_sigma_est = pm.HalfNormal('trend_inc_sigma_est', sigma=trend_inc_sigma)  
-                trend_inc = pm.Normal('trend_inc', mu=0, sigma=trend_inc_sigma_est,shape=n_changepoints)
-
-            else:
-
-                trend_inc = pm.Normal('trend_inc', mu=0, sigma=trend_inc_sigma,shape=n_changepoints)
-                
-            trend_inc=trend_inc*mult
-            gamma = -s* trend_inc
-
-            trend_inc=det_dot(A, trend_inc)
-            trend=trend+trend_inc
-            A_gamma=det_dot(A, gamma)
-            offset_change=offset_change+A_gamma
-        if post_seismic:
-            # add exponential term to every trend section
-            c_constant=pm.Normal('c_constant', mu=0, sigma=2,shape=n_changepoints)
-            etau=pm.HalfNormal('etau', sigma=3,shape=n_changepoints)  
-            t_vec=(A*x[:,None])-s
-            inside_function=((t_vec-t_vec*[t_vec<0]).squeeze()/etau)              
-            post_seismic=sum(c_constant*(1-np.exp(-((t_vec-t_vec*[t_vec<0]).squeeze()/etau)))*mult,axis=1)
-            offset_change=offset_change+post_seismic 
-        if annual_cycle:
-            m_coeffs=pm.Normal('m_coeffs', mu=0, sigma=1,shape=12)
-            annual=pm.Deterministic("annual", det_dot(X_mat,m_coeffs)) 
-            mu = pm.Deterministic("mu", offset_change + trend*x + offset + annual)   
-        else:
-            mu = pm.Deterministic("mu", offset_change + trend*x + offset)             
-        Y_obs = pm.Normal('Y_obs', mu=mu, sigma=sigma, observed=y)
-     
-    
-class w_vlam(pm.model.Model):
-    # 1) override init
-    """
-    model in (working mode)
-    changes: std normalizing
-    
-    
-    """
-    def __init__(self, observed=None,name='', model=None,change_trend=False,n_changepoints=5,number_mu=0.1,
-                     offsets_opt='normal',offsets_std=1,
-                      add_to_num=0.,sigma_noise=1.,trend_inc_sigma=0.01,annual_cycle=False,
-                      change_offsets=True,estimate_offset_sigma=False,estimate_trend_inc_sigma=False,
-                      estimate_number_mu=False,n_samples=500,target_accept=0.8,post_seismic=True,AR1=False,
-                      trend_independent=False):
-
-        super().__init__(name,model)
-
-        
-        x=observed.x
-        y=observed.y
-            
-        xmin=np.min(x)
-        xmax=np.max(x)
-        
-        
-        X_mat=observed.X_mat
-        
-        # Priors for unknown model parameters
-        offset = pm.Normal('offset', mu=0, sigma=1)
-        trend = pm.Normal('trend', mu=0, sigma=1) 
-        sigma = pm.HalfNormal('sigma', sigma=sigma_noise)   
-
-        if estimate_number_mu:
-            act_number_sigma = pm.HalfNormal('act_number_sigma', sigma=number_mu)  
-            act_number=pm.Poisson('act_number', mu=act_number_sigma) -add_to_num
-        else:
-            act_number=pm.Poisson('act_number', mu=number_mu) -add_to_num
-
-        if not change_offsets:
-            mult_offsets=0.
-        else:
-            mult_offsets=1. 
-        if offsets_opt=='normal':
-            if estimate_offset_sigma:
-                offset_sigma = pm.HalfNormal('offset_sigma', sigma=offsets_std)   
-                offsets = pm.Normal('offsets', mu=0, sigma=offset_sigma, shape=n_changepoints)*mult_offsets              
-            else:
-                offsets = pm.Normal('offsets', mu=0, sigma=offsets_std, shape=n_changepoints)*mult_offsets  
-
-        mult=np.zeros(n_changepoints)
-        arr=np.arange(n_changepoints)+0.5
-
-        mult = (arr<act_number) *1 #[arr<act_number]=1
-        offsets=offsets*mult
-        mu_pos=pm.Uniform('mu_pos', lower=xmin, upper=xmax, shape=n_changepoints) 
-
-        s = pm.Normal('positions',  mu=mu_pos, sigma=5, shape=n_changepoints)
-
-        A = (x[:, None] >= s) * 1
-        offset_change = det_dot(A, offsets)
-
-        if change_trend:
-            if estimate_trend_inc_sigma:
-                trend_inc_sigma_est = pm.HalfNormal('trend_inc_sigma_est', sigma=trend_inc_sigma)  
-                trend_inc = pm.Normal('trend_inc', mu=0, sigma=trend_inc_sigma_est,shape=n_changepoints)
-
-            else:
-
-                trend_inc = pm.Normal('trend_inc', mu=0, sigma=trend_inc_sigma,shape=n_changepoints)
-            trend_inc=trend_inc*mult
-            
-            if trend_independent:
-                
-                trend_correct_offsets = tensor.roll((tensor.roll(s,shift=-1)-s)*trend_inc,shift=1).cumsum()
-                trend_correct_offsets=trend_correct_offsets-trend_correct_offsets[0]
-                #gamma=-s* trend_inc+np.roll(np.diff(alt_s,append=alt_s[-1])*trend_inc,1).cumsum()
-                gamma=-s* trend_inc+trend_correct_offsets
-                
-                s_tens=tensor.vector('s_tens')
-                dd=s_tens
-                ffs = theano.function([s_tens], dd)
-                sou=ffs(s)
-
-                A_alt=np.diff(((x[:, None] >= sou) * 1),axis=1,append=0)*-1
-                trend_inc=det_dot(A_alt, trend_inc)
-                A_gamma=det_dot(A_alt, gamma)
-                trend=trend+trend_inc
-                
-            else:    
-                
-                gamma = -s* trend_inc
-                trend_inc=det_dot(A, trend_inc)
-                trend=trend+trend_inc
-                A_gamma=det_dot(A, gamma)
-
-            offset_change=offset_change+A_gamma
-            
-        if post_seismic:
-            # add exponential term to every trend section
-            c_constant=pm.Normal('c_constant', mu=0, sigma=2,shape=n_changepoints)
-            etau=pm.HalfNormal('etau', sigma=3,shape=n_changepoints)  
-            t_vec=(A*x[:,None])-s
-            inside_function=((t_vec-t_vec*[t_vec<0]).squeeze()/etau)              
-            post_seismic=sum(c_constant*(1-np.exp(-((t_vec-t_vec*[t_vec<0]).squeeze()/etau)))*mult,axis=1)
-            offset_change=offset_change+post_seismic 
-        if annual_cycle:
-            m_coeffs=pm.Normal('m_coeffs', mu=0, sigma=1,shape=12)
-            annual=pm.Deterministic("annual", det_dot(X_mat,m_coeffs)) 
-            mu = pm.Deterministic("mu", offset_change + trend*x + offset + annual)   
-        else:
-            mu = pm.Deterministic("mu", offset_change + trend*x + offset)
-        if AR1: # first order autoregressive ...
-            beta = pm.HalfNormal('beta', sigma=0.4)
-            likelihood = pm.AR('AR1_coeff', beta, sigma=sigma, observed=y-mu) 
-        else:    
-            Y_obs = pm.Normal('Y_obs', mu=mu, sigma=sigma, observed=y)
- 
-                    
-class vlam(pm.model.Model):
-    # 1) override init
-    def __init__(self, observed=None,name='', model=None,change_trend=False,n_changepoints=5,number_mu=0.1,
-                     offsets_opt='normal',offsets_std=1,
-                      add_to_num=0.,sigma_noise=1.,trend_inc_sigma=0.01,annual_cycle=False,
-                      change_offsets=True,estimate_offset_sigma=False,estimate_trend_inc_sigma=False,
-                      estimate_number_mu=False,n_samples=500,target_accept=0.8,post_seismic=True,
-                      AR1=False,studentst_noise=False,distribute_offsets=False):
-
-
-        super().__init__(name,model)
-
-        
-        x=observed.x
-        y=observed.y
-            
-        xmin=np.min(x)
-        xmax=np.max(x)
-        
-        
-        X_mat=observed.X_mat
-        
-        # Priors for unknown model parameters
-        offset = pm.Normal('offset', mu=0, sigma=1)
-        trend = pm.Normal('trend', mu=0, sigma=1) 
-        sigma = pm.HalfNormal('sigma', sigma=sigma_noise)   
-
-        if estimate_number_mu:
-            act_number_sigma = pm.HalfNormal('act_number_sigma', sigma=number_mu)  
-            act_number=pm.Poisson('act_number', mu=act_number_sigma) -add_to_num
-        else:
-            act_number=pm.Poisson('act_number', mu=number_mu) -add_to_num
-
-        if not change_offsets:
-            mult_offsets=0.
-        else:
-            mult_offsets=1. 
-        if offsets_opt=='normal':
-            if estimate_offset_sigma:
-                offset_sigma = pm.HalfNormal('offset_sigma', sigma=offsets_std)   
-                offsets = pm.Normal('offsets', mu=0, sigma=offset_sigma, shape=n_changepoints)*mult_offsets              
-            else:
-                offsets = pm.Normal('offsets', mu=0, sigma=offsets_std, shape=n_changepoints)*mult_offsets  
-
-        mult=np.zeros(n_changepoints)
-        arr=np.arange(n_changepoints)+0.5
-
-        mult = (arr<act_number) *1 #[arr<act_number]=1
-        offsets=offsets*mult
-        if distribute_offsets:
-            # initial distribution
-            mup=np.linspace(xmin,xmax,n_changepoints)
-            mu_pos=pm.Uniform('mu_pos',mup, lower=xmin, upper=xmax, shape=n_changepoints) 
-        else:
-            mu_pos=pm.Uniform('mu_pos', lower=xmin, upper=xmax, shape=n_changepoints) 
-
-        s = pm.Normal('positions',  mu=mu_pos, sigma=5, shape=n_changepoints)
-
-        A = (x[:, None] >= s) * 1
-        offset_change = det_dot(A, offsets)
-
-        if change_trend:
-            if estimate_trend_inc_sigma:
-                trend_inc_sigma_est = pm.HalfNormal('trend_inc_sigma_est', sigma=trend_inc_sigma)  
-                trend_inc = pm.Normal('trend_inc', mu=0, sigma=trend_inc_sigma_est,shape=n_changepoints)
-
-            else:
-
-                trend_inc = pm.Normal('trend_inc', mu=0, sigma=trend_inc_sigma,shape=n_changepoints)
-            trend_inc=trend_inc*mult
-            gamma = -s* trend_inc
-
-            trend_inc=det_dot(A, trend_inc)
-            trend=trend+trend_inc
-            A_gamma=det_dot(A, gamma)
-            offset_change=offset_change+A_gamma
-        if post_seismic:
-            # add exponential term to every trend section
-            c_constant=pm.Normal('c_constant', mu=0, sigma=2,shape=n_changepoints)
-            etau=pm.HalfNormal('etau', sigma=3,shape=n_changepoints)  
-            t_vec=(A*x[:,None])-s
-            inside_function=((t_vec-t_vec*[t_vec<0]).squeeze()/etau)              
-            post_seismic=sum(c_constant*(1-np.exp(-((t_vec-t_vec*[t_vec<0]).squeeze()/etau)))*mult,axis=1)
-            offset_change=offset_change+post_seismic 
-        if annual_cycle:
-            m_coeffs=pm.Normal('m_coeffs', mu=0, sigma=1,shape=12)
-            annual=pm.Deterministic("annual", det_dot(X_mat,m_coeffs)) 
-            mu = pm.Deterministic("mu", offset_change + trend*x + offset + annual)   
-        else:
-            mu = pm.Deterministic("mu", offset_change + trend*x + offset)
-        if AR1: # first order autoregressive ...
-            beta = pm.HalfNormal('beta', sigma=0.4)
-            likelihood = pm.AR('AR1_coeff', beta, sigma=sigma, observed=y-mu) 
-        else:    
-            Y_obs = pm.Normal('Y_obs', mu=mu, sigma=sigma, observed=y)
-
-                    
-class vlam_exp(pm.model.Model):
-    # 1) override init
-    """
-    cabable to deal with offset inputs ...
-    
-    """
-    
-    
-    
-    
-    def __init__(self, observed=None,name='', model=None,change_trend=False,n_changepoints=5,number_mu=0.1,
-                     offsets_opt='normal',offsets_std=1,
-                      add_to_num=0.,sigma_noise=1.,trend_inc_sigma=0.01,annual_cycle=False,
-                      change_offsets=True,estimate_offset_sigma=False,estimate_trend_inc_sigma=False,
-                      estimate_number_mu=False,n_samples=500,target_accept=0.8,post_seismic=True,
-                      AR1=False,studentst_noise=False,distribute_offsets=False,initial_values={},**kwargs):
-
-        super().__init__(name,model)
-
-        
-        x=observed.x
-        y=observed.y
-            
-        xmin=np.min(x)
-        xmax=np.max(x)
-        
-        
-        X_mat=observed.X_mat
-        
-        if 'number_mu' in initial_values:
-            initialize=True
-            print('manually initialize with: ')
-            print(initial_values)
-            estimate_number_mu=False
-            estimate_offset_sigma=False
-            offsets_mu=initial_values['offsets']
-            start = {'offsets': initial_values['offsets'], 'positions': initial_values['positions']}
-            
-            #trace = pm.sample(10, step=step, start=start,
-        else:
-            offsets_mu=0
-            start={}
-            
-            
-            # {'n_changepoints':n_changepoints,'number_mu':number_mu,'positions':positions,'offsets':offsets}
-        
-        # Priors for unknown model parameters
-        offset = pm.Normal('offset', mu=0, sigma=1)
-        trend = pm.Normal('trend', mu=0, sigma=1) 
-        sigma = pm.HalfNormal('sigma', sigma=sigma_noise)   
-
-        if estimate_number_mu:
-            act_number_sigma = pm.HalfNormal('act_number_sigma', sigma=number_mu)  
-            act_number=pm.Poisson('act_number', mu=act_number_sigma) -add_to_num
-        else:
-            act_number=pm.Poisson('act_number', mu=number_mu) -add_to_num
-
-        if not change_offsets:
-            mult_offsets=0.
-        else:
-            mult_offsets=1. 
-        if offsets_opt=='normal':
-            if estimate_offset_sigma:
-                offset_sigma = pm.HalfNormal('offset_sigma', sigma=offsets_std)   
-                offsets = pm.Normal('offsets', mu=offsets_mu, sigma=offset_sigma,
-                                    shape=n_changepoints)*mult_offsets              
-            else:
-                offsets = pm.Normal('offsets', mu=offsets_mu, sigma=offsets_std,
-                                    shape=n_changepoints)*mult_offsets  
-
-        mult=np.zeros(n_changepoints)
-        arr=np.arange(n_changepoints)+0.5
-
-        mult = (arr<act_number) *1 #[arr<act_number]=1
-        offsets=offsets*mult
-        if distribute_offsets:
-            # initial distribution
-            mup=np.linspace(xmin,xmax,n_changepoints)
-            mu_pos=pm.Uniform('mu_pos',mup, lower=xmin, upper=xmax, shape=n_changepoints) 
-
-        else:
-            mu_pos=pm.Uniform('mu_pos', lower=xmin, upper=xmax, shape=n_changepoints) 
-
-        s = pm.Normal('positions',  mu=mu_pos, sigma=5, shape=n_changepoints)
-
-        A = (x[:, None] >= s) * 1
-        offset_change = det_dot(A, offsets)
-
-        if change_trend:
-            if estimate_trend_inc_sigma:
-                trend_inc_sigma_est = pm.HalfNormal('trend_inc_sigma_est', sigma=trend_inc_sigma)  
-                trend_inc = pm.Normal('trend_inc', mu=0, sigma=trend_inc_sigma_est,shape=n_changepoints)
-
-            else:
-
-                trend_inc = pm.Normal('trend_inc', mu=0, sigma=trend_inc_sigma,shape=n_changepoints)
-            trend_inc=trend_inc*mult
-            gamma = -s* trend_inc
-
-            trend_inc=det_dot(A, trend_inc)
-            trend=trend+trend_inc
-            A_gamma=det_dot(A, gamma)
-            offset_change=offset_change+A_gamma
-        if post_seismic:
-            # add exponential term to every trend section
-            c_constant=pm.Normal('c_constant', mu=0, sigma=2,shape=n_changepoints)
-            etau=pm.HalfNormal('etau', sigma=3,shape=n_changepoints)  
-            t_vec=(A*x[:,None])-s
-            inside_function=((t_vec-t_vec*[t_vec<0]).squeeze()/etau)              
-            post_seismic=sum(c_constant*(1-np.exp(-((t_vec-t_vec*[t_vec<0]).squeeze()/etau)))*mult,axis=1)
-            offset_change=offset_change+post_seismic 
-        if annual_cycle:
-            m_coeffs=pm.Normal('m_coeffs', mu=0, sigma=1,shape=12)
-            annual=pm.Deterministic("annual", det_dot(X_mat,m_coeffs)) 
-            mu = pm.Deterministic("mu", offset_change + trend*x + offset + annual)   
-        else:
-            mu = pm.Deterministic("mu", offset_change + trend*x + offset)
-        if AR1: # first order autoregressive ...
-            beta = pm.HalfNormal('beta', sigma=0.4)
-            likelihood = pm.AR('AR1_coeff', beta, sigma=sigma, observed=y-mu) 
-        else:    
-            Y_obs = pm.Normal('Y_obs', mu=mu, sigma=sigma, observed=y)
-
+    ending = file.split(".",1) 
+
+    if len(ending)==1:
+        ending ='txt'
+    else:
+        ending=ending[1]
+    if ending =='txt' or ending =='':
+        if variable=='auto':
+            variable='Height'
+        data=pd.read_csv(file,delim_whitespace=True)
+        data['Year']=pd.to_datetime(data['Year']-1970.,unit='Y')
+        data.set_index('Year',inplace=True)
+        data=data.resample(resample).mean()[variable] 
+    elif ending =='tenv3':
+        if variable=='auto':
+            variable='____up(m)'
+        data=pd.read_csv(file,delim_whitespace=True,header=None)
+        data['Year']=pd.to_datetime(data[2]-1970.,unit='Y')
+        data.set_index('Year',inplace=True)
+        data=data.resample(resample).mean()[variable]   
+    elif ending =='txyz2':
+        if variable=='auto':
+            variable=3
+        file = 'discotimes/examples/HOB2'
+        data=pd.read_csv(file,delim_whitespace=True,header=None)
+        data['Year']=pd.to_datetime(data[2]-1970.,unit='Y')
+        data.set_index('Year',inplace=True)
+        data=data.resample(resample).mean()[variable]
+    elif ending =='nc':
+        data = xr.open_dataset(file)
+    else:
+        raise Exception('File of type *.'+ending+' not implemented')
+    return data    

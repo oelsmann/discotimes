@@ -1,0 +1,9 @@
+Example data:
+
+sattg.nc:
+	Netcdf of three sattg time series, with variable 'vlm'
+*txt:
+	Textfiles of GPS data (from NGL, Blewitt et al.,2016) 
+	variable: 'Height'
+
+
