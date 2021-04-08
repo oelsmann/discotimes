@@ -36,7 +36,7 @@ Download and install Miniconda from [here](https://repo.anaconda.com/miniconda/M
 
 
 ## Installation
-
+      pip install git+https://github.com/vaucebe/discotimes 
       conda install -c conda-forge theano-pymc -y
       
 ## Getting started
