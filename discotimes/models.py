@@ -121,7 +121,7 @@ class discotimes_model(pm.model.Model):
         s = pm.Normal('positions',  mu=mu_pos, sigma=5, shape=n_changepoints)
 
         A = (x[:, None] >= s) * 1
-        offset_change = det_dot(A, offsets)
+        offset_change = elem_matrix_vector_product(A, offsets)
 
         if change_trend:
             if estimate_trend_inc_sigma:
@@ -134,9 +134,9 @@ class discotimes_model(pm.model.Model):
             trend_inc=trend_inc*mult
             gamma = -s* trend_inc
 
-            trend_inc=det_dot(A, trend_inc)
+            trend_inc=elem_matrix_vector_product(A, trend_inc)
             trend=trend+trend_inc
-            A_gamma=det_dot(A, gamma)
+            A_gamma=elem_matrix_vector_product(A, gamma)
             offset_change=offset_change+A_gamma
         if post_seismic:
             # !!! not implemented yet !!!
@@ -149,7 +149,7 @@ class discotimes_model(pm.model.Model):
             offset_change=offset_change+post_seismic 
         if annual_cycle:
             m_coeffs=pm.Normal('m_coeffs', mu=0, sigma=1,shape=12)
-            annual=pm.Deterministic("annual", det_dot(X_mat,m_coeffs)) 
+            annual=pm.Deterministic("annual", elem_matrix_vector_product(X_mat,m_coeffs)) 
             mu = pm.Deterministic("mu", offset_change + trend*x + offset + annual)   
         else:
             mu = pm.Deterministic("mu", offset_change + trend*x + offset)            
@@ -168,8 +168,8 @@ class discotimes_model(pm.model.Model):
                 Y_obs = pm.Normal('Y_obs', mu=mu, sigma=sigma, observed=y)
 
 
-def det_dot(a, b):
+def elem_matrix_vector_product(matrix, vector):
     """
-
+    compute elementwise matrix*vector product
     """
-    return (a * b[None, :]).sum(axis=-1)
+    return (matrix * vector[None, :]).sum(axis=-1)

@@ -1,27 +1,23 @@
-# MIT License
+#    GPLv3 License
 
-# Copyright (c) 2021 Julius Oelsmann
+#    DiscOTimeS: Automated estimation of trends, discontinuities and nonlinearities
+#    in geophysical time series
+#    Copyright (C) 2021  Julius Oelsmann
 
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
 
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
 
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-
-# main discotimes class
+#    main discotimes class
 
 
 import pandas as pd
@@ -545,7 +541,7 @@ class discotimes:
             offsets=offsets*0
         positions = data.positions.values
         A = (x[:, None] >= positions) * 1
-        offset_change = det_dot(A, offsets)
+        offset_change = elem_matrix_vector_product(A, offsets)
         trend=data.trend.values
         trend_err=data_std.trend.values
         trend_v=trend
@@ -560,17 +556,17 @@ class discotimes:
                 gamma=-positions* trend_inc+np.roll(np.diff(positions,append=s[-1])*trend_inc,1).cumsum()
                 A = (x[:, None] >= s) * 1
                 A_alt=np.diff(A,axis=1,append=0)*-1
-                trend_inc=det_dot(A_alt, trend_inc)
-                A_gamma=det_dot(A_alt, gamma)
+                trend_inc=elem_matrix_vector_product(A_alt, trend_inc)
+                A_gamma=elem_matrix_vector_product(A_alt, gamma)
                 trend=trend+trend_inc
             else:
                 trend_v=copy.deepcopy(np.append(trend_v, (trend_inc+trend_v)*mult))
                 trend_err_v=copy.deepcopy(np.append(trend_err_v, trend_inc_err))
 
                 gamma = -positions * trend_inc
-                trend_inc=det_dot(A, trend_inc)
+                trend_inc=elem_matrix_vector_product(A, trend_inc)
                 trend=trend+trend_inc
-                A_gamma=det_dot(A, gamma)
+                A_gamma=elem_matrix_vector_product(A, gamma)
 
             offset_change=offset_change+A_gamma
             trend_v_sorted=pd.DataFrame(trend).drop_duplicates()
