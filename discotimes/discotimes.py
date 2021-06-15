@@ -814,7 +814,7 @@ class discotimes:
         ds['first_obs'].attrs=t_attrs
         ds['trend'].attrs={'units' : "input unit/year",'long_name' : "Piecewise Trend"}
         ds['trend_err'].attrs={'units' : "input unit/year",'long_name' : "Trend uncertainty (1-sigma)"}
-        ds['offsets'].attrs={'units' : "input unit",'long_name' : "discontinuity size"}
+        ds['offsets'].attrs={'units' : "input unit",'long_name' : "Discontinuity or offset size. Note that this is not an absolute offset size (w.r.t. zero), but a relative size. I.e. it is the size of the jump within the time series."}
         ds['number_cp'].attrs={'units' : "",'long_name' : "number of change points"}
 
         ds['diff'].attrs={'units' : "days",'long_name' : "position difference"}

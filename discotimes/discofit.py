@@ -22,9 +22,9 @@
 
 # command line interface for discotimes
 
-from discotimes import discotimes as dt
-from model_settings import *
-from discotimes import file_reader
+from discotimes.discotimes import discotimes as dt
+from discotimes.model_settings import *
+from discotimes.discotimes import file_reader
 import os
 import sys
 import argparse
