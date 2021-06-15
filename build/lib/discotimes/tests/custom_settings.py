@@ -1,20 +1,22 @@
 # Define custom model settings file
+
 # Example file:
-# note that when u use the custom settings, they will be stored in the output files
+# note that when u use the custom settings, they will be 
+# stored in the output files (*nc or *dt files)
 # so you don't need to store this information by yourself
 
 custom_settings={}
 
-custom_settings['run_settings']      =   {'n_samples':16000, # increase sample size from 8000 to 16000
-                                            'tune':2000,
-                                            'cores':8,
+custom_settings['run_settings']      =   {'n_samples':100, # increase sample size from 8000 to 16000
+                                            'tune':1000,
+                                            'cores':4,
                                             'nuts':{'target_accept':0.9},
                                             'return_inferencedata':True,
                                             'compress':True}
 
 custom_settings['initial_run_settings']   = {'detection_threshold':25} 
 
-custom_settings['model_settings']   = {'n_changepoints':10, # e.g. change maximum possible number of changepoints from 5 to 10
+custom_settings['model_settings']   = {'n_changepoints':5, # e.g. change maximum possible number of changepoints from 5 to 10
                                             'change_trend':False} # disable trend changes      
 
 

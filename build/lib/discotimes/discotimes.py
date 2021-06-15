@@ -1,27 +1,23 @@
-# MIT License
+#    GPLv3 License
 
-# Copyright (c) 2021 Julius Oelsmann
+#    DiscOTimeS: Automated estimation of trends, discontinuities and nonlinearities
+#    in geophysical time series
+#    Copyright (C) 2021  Julius Oelsmann
 
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
 
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
 
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-
-# main discotimes class
+#    main discotimes class
 
 
 import pandas as pd
@@ -38,11 +34,9 @@ import arviz as az
 import os
 import datetime
 import copy
-from .models import *
+from models import *
 
 
-    
-    
     
 
 class discotimes:
@@ -222,11 +216,14 @@ class discotimes:
             list of parameters to test
         """
         stats={}
-        for par in parameters:
-            sub_set=[]
-            for i in self.trace.posterior.chain.values:
-                sub_set.append(pm.geweke(self.trace.posterior[par][i,:], intervals=50)[:,1])
-            stats[par]=pd.DataFrame(np.asarray(sub_set).T,columns=self.trace.posterior.chain.values)
+        if hasattr(pm,'geweke'):
+            for par in parameters:
+                sub_set=[]
+                for i in self.trace.posterior.chain.values:
+                    sub_set.append(pm.geweke(self.trace.posterior[par][i,:], intervals=50)[:,1])
+                stats[par]=pd.DataFrame(np.asarray(sub_set).T,columns=self.trace.posterior.chain.values)
+        else:
+            stats['trend']=pd.DataFrame([np.nan]*10)
         self.convergence_stats = stats
         
                 
@@ -486,7 +483,7 @@ class discotimes:
         axs[0].set_ylabel('Height')
         axs[1].set_ylabel('Height')
         if save:
-            plt.savefig(save_dir+save_name)
+            plt.savefig(save_dir+self.name)
     
     def positions_to_date(self,positions):
         """converts numeric positions to dates
@@ -545,7 +542,7 @@ class discotimes:
             offsets=offsets*0
         positions = data.positions.values
         A = (x[:, None] >= positions) * 1
-        offset_change = det_dot(A, offsets)
+        offset_change = elem_matrix_vector_product(A, offsets)
         trend=data.trend.values
         trend_err=data_std.trend.values
         trend_v=trend
@@ -560,17 +557,17 @@ class discotimes:
                 gamma=-positions* trend_inc+np.roll(np.diff(positions,append=s[-1])*trend_inc,1).cumsum()
                 A = (x[:, None] >= s) * 1
                 A_alt=np.diff(A,axis=1,append=0)*-1
-                trend_inc=det_dot(A_alt, trend_inc)
-                A_gamma=det_dot(A_alt, gamma)
+                trend_inc=elem_matrix_vector_product(A_alt, trend_inc)
+                A_gamma=elem_matrix_vector_product(A_alt, gamma)
                 trend=trend+trend_inc
             else:
                 trend_v=copy.deepcopy(np.append(trend_v, (trend_inc+trend_v)*mult))
                 trend_err_v=copy.deepcopy(np.append(trend_err_v, trend_inc_err))
 
                 gamma = -positions * trend_inc
-                trend_inc=det_dot(A, trend_inc)
+                trend_inc=elem_matrix_vector_product(A, trend_inc)
                 trend=trend+trend_inc
-                A_gamma=det_dot(A, gamma)
+                A_gamma=elem_matrix_vector_product(A, gamma)
 
             offset_change=offset_change+A_gamma
             trend_v_sorted=pd.DataFrame(trend).drop_duplicates()
@@ -594,8 +591,7 @@ class discotimes:
             else:
                 ff2.iloc[0]=np.vstack([0,trend_err,offset,start_pos[0]]).flatten()
                 full_err=pd.concat([ff,ff2.iloc[0:1]]).sort_values(by='pos')
-
-
+        
 
         if post_seismic:
             new=(A*x[:,None])-s
@@ -626,6 +622,24 @@ class discotimes:
             end_pos=self.obs.series_clean.index[-1]
             diff=end_pos-start_pos        
             full_err = pd.DataFrame(np.vstack([0,trend_err,offset,start_pos]).T,columns=['pos','trend_inc_err','offsets','real_p'])
+            
+        elif not change_trend and change_offsets:
+            trend_v =np.asarray(trend)
+            trend_err_v=np.asarray(trend_err_v)
+            positions_v=self.positions_to_date(positions)  
+            #mult=mult*0
+            num=0
+            trend_v_sorted=pd.DataFrame([trend])
+            offset_change_sorted=pd.DataFrame(offset_change).drop_duplicates()
+            start_pos=self.obs.series_clean.index[offset_change_sorted.index.values]
+            end_pos=self.obs.series_clean.index[np.roll(offset_change_sorted.index.values-1,shift=-1)]
+            diff=end_pos-start_pos
+            full_err = pd.DataFrame(np.vstack([start_pos,start_pos,start_pos,start_pos]).T,columns=['pos','trend_inc_err','offsets','real_p'])            
+            full_err['trend_inc_err']=[float(trend_err_v)]*len(start_pos)
+            full_err['offsets']=offsets*mult
+            trend_err_v=pd.DataFrame([trend_err_v])
+            trend_v=pd.DataFrame([trend_v])
+            trend=pd.DataFrame([trend])
 
         else:
             positions_v=self.positions_to_date(positions*mult)
@@ -718,7 +732,7 @@ class discotimes:
     
     def to_nc(self):
         """converts output to xr.DataSet ~ netcdf 
-        
+
         """
         ALL_DATA=np.empty([21,1,self.sample_specs['cores'],self.specs['n_changepoints']+1])*np.nan
         iindex=0
@@ -732,8 +746,12 @@ class discotimes:
         first_obs=(self.obs.series_clean.index[0]-pd.Timestamp('1950')).days 
         for chain in np.arange(self.sample_specs['cores']):
             ymod=self.ymod(chain,**self.specs)
-            trend_v=pd.DataFrame(ymod['trend']).drop_duplicates().values.flatten()
+            variables=['trend','trend_err_v','positions_v']
+            for variable in variables:
+                if isinstance(ymod[variable],float):
+                    ymod[variable]=pd.DataFrame([ymod[variable]]) 
 
+            trend_v=pd.DataFrame(ymod['trend']).drop_duplicates().values.flatten()
             ALL_DATA[0, iindex, chain, :len(trend_v)]=trend_v # ymod['trend_v']
             ALL_DATA[1, iindex, chain, :len(ymod['trend_err_v'])]=ymod['trend_err_v']    
             ALL_DATA[2, iindex, chain, 0]=ymod['act_num']      
@@ -743,9 +761,9 @@ class discotimes:
             ALL_DATA[6, iindex, chain, 0]=sta['p_loo'][chain]
             # new values bro!
             ALL_DATA[10, iindex, chain, :len(ymod['trend_v_sorted'])]=ymod['trend_v_sorted']
-            ALL_DATA[11, iindex, chain, :len(ymod['trend_v_sorted'])]=(ymod['start_pos']-pd.Timestamp('1950')).days.astype(float)
-            ALL_DATA[12, iindex, chain, :len(ymod['trend_v_sorted'])]=(ymod['end_pos']-pd.Timestamp('1950')).days.astype(float)
-            ALL_DATA[13, iindex, chain, :len(ymod['trend_v_sorted'])]=ymod['diff'].days.astype(float)
+            ALL_DATA[11, iindex, chain, :len(ymod['start_pos'])]=(ymod['start_pos']-pd.Timestamp('1950')).days.astype(float)
+            ALL_DATA[12, iindex, chain, :len(ymod['end_pos'])]=(ymod['end_pos']-pd.Timestamp('1950')).days.astype(float)
+            ALL_DATA[13, iindex, chain, :len(ymod['diff'])]=ymod['diff'].days.astype(float)
 
             ALL_DATA[19, iindex, chain, :len(ymod['trend_un'])]=ymod['trend_un']
             ALL_DATA[20, iindex, chain, :len(ymod['offsets'])]=ymod['offsets']
@@ -796,13 +814,14 @@ class discotimes:
         ds['first_obs'].attrs=t_attrs
         ds['trend'].attrs={'units' : "input unit/year",'long_name' : "Piecewise Trend"}
         ds['trend_err'].attrs={'units' : "input unit/year",'long_name' : "Trend uncertainty (1-sigma)"}
-        ds['offsets'].attrs={'units' : "input unit",'long_name' : "discontinuity size"}
+        ds['offsets'].attrs={'units' : "input unit",'long_name' : "Discontinuity or offset size. Note that this is not an absolute offset size (w.r.t. zero), but a relative size. I.e. it is the size of the jump within the time series."}
         ds['number_cp'].attrs={'units' : "",'long_name' : "number of change points"}
 
         ds['diff'].attrs={'units' : "days",'long_name' : "position difference"}
-
-
-        ds.attrs=self.specs
+        
+        for item in self.specs:
+            ds.attrs[item]=str(self.specs[item])
+        ds.attrs['initial_values']=str(self.specs['initial_values'])
         ds.attrs['info']="Data created with DiscoTimeS on "+str(datetime.date.today())
         return ds
 

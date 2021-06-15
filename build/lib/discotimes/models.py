@@ -1,3 +1,24 @@
+#    GPLv3 License
+
+#    DiscOTimeS: Automated estimation of trends, discontinuities and nonlinearities
+#    in geophysical time series
+#    Copyright (C) 2021  Julius Oelsmann
+
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+
+
 from theano.tensor import *
 from theano import tensor
 from arviz import *
@@ -14,7 +35,7 @@ class discotimes_model(pm.model.Model):
     type pm.model.Model
     """
     
-    def __init__(self, observed=None,name='', model=None,change_trend=False,n_changepoints=5,offsets_std=1,p_=0.1,
+    def __init__(self, observed=None,name='',change_trend=False,n_changepoints=5,offsets_std=1,p_=0.1,
                       sigma_noise=1.,trend_inc_sigma=0.01,annual_cycle=False,change_offsets=True,
                  estimate_offset_sigma=False,estimate_trend_inc_sigma=False,post_seismic=False,
                  AR1=False,distribute_offsets=False,robust_reg=False,initial_values={},**kwargs):
@@ -62,7 +83,7 @@ class discotimes_model(pm.model.Model):
             {'n_changepoints':n_changepoints,'p_':p_,'positions':positions,'offsets':offsets}
         
         """
-        super().__init__(name,model)
+        super().__init__(name)
 
         
         x=observed.x
@@ -121,7 +142,7 @@ class discotimes_model(pm.model.Model):
         s = pm.Normal('positions',  mu=mu_pos, sigma=5, shape=n_changepoints)
 
         A = (x[:, None] >= s) * 1
-        offset_change = det_dot(A, offsets)
+        offset_change = elem_matrix_vector_product(A, offsets)
 
         if change_trend:
             if estimate_trend_inc_sigma:
@@ -134,9 +155,9 @@ class discotimes_model(pm.model.Model):
             trend_inc=trend_inc*mult
             gamma = -s* trend_inc
 
-            trend_inc=det_dot(A, trend_inc)
+            trend_inc=elem_matrix_vector_product(A, trend_inc)
             trend=trend+trend_inc
-            A_gamma=det_dot(A, gamma)
+            A_gamma=elem_matrix_vector_product(A, gamma)
             offset_change=offset_change+A_gamma
         if post_seismic:
             # !!! not implemented yet !!!
@@ -149,7 +170,7 @@ class discotimes_model(pm.model.Model):
             offset_change=offset_change+post_seismic 
         if annual_cycle:
             m_coeffs=pm.Normal('m_coeffs', mu=0, sigma=1,shape=12)
-            annual=pm.Deterministic("annual", det_dot(X_mat,m_coeffs)) 
+            annual=pm.Deterministic("annual", elem_matrix_vector_product(X_mat,m_coeffs)) 
             mu = pm.Deterministic("mu", offset_change + trend*x + offset + annual)   
         else:
             mu = pm.Deterministic("mu", offset_change + trend*x + offset)            
@@ -168,8 +189,8 @@ class discotimes_model(pm.model.Model):
                 Y_obs = pm.Normal('Y_obs', mu=mu, sigma=sigma, observed=y)
 
 
-def det_dot(a, b):
+def elem_matrix_vector_product(matrix, vector):
     """
-
+    compute elementwise matrix*vector product
     """
-    return (a * b[None, :]).sum(axis=-1)
+    return (matrix * vector[None, :]).sum(axis=-1)

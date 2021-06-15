@@ -7,8 +7,8 @@
 
 custom_settings={}
 
-custom_settings['run_settings']      =   {'n_samples':16000, # increase sample size from 8000 to 16000
-                                            'tune':2000,
+custom_settings['run_settings']      =   {'n_samples':100, # increase sample size from 8000 to 16000
+                                            'tune':1000,
                                             'cores':4,
                                             'nuts':{'target_accept':0.9},
                                             'return_inferencedata':True,
@@ -16,7 +16,7 @@ custom_settings['run_settings']      =   {'n_samples':16000, # increase sample s
 
 custom_settings['initial_run_settings']   = {'detection_threshold':25} 
 
-custom_settings['model_settings']   = {'n_changepoints':10, # e.g. change maximum possible number of changepoints from 5 to 10
+custom_settings['model_settings']   = {'n_changepoints':5, # e.g. change maximum possible number of changepoints from 5 to 10
                                             'change_trend':False} # disable trend changes      
 
 
