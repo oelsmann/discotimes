@@ -104,10 +104,10 @@ settings['model_settings']['p_']= 0.3
 ```
 
 #### Run settings
-Control the number of cores ('cores')<code></code> used or the number of sampling iterations ('n_samples')<code></code>. You can also control settings of the NUTS sampler (https://docs.pymc.io/api/inference.html)
+Control the number of cores <code>('cores')</code> used or the number of sampling iterations <code>('n_samples')</code>. You can also control settings of the NUTS sampler (https://docs.pymc.io/api/inference.html)
 
 #### Data input
-Now load some data. We use a GNSS height time series, which is can be downloaded from the repository in discotimes/examples/G103.txt. Note that we use file_reader, which can handle different types of input data like .tenv3, .txyz2, .txt, .csv and netcdf. Data in .txt or .csv files should have a variable column named <code>'Height'</code> (default, otherwise define variable), and a date column <code>('Year')</code>, specifying the date like 2000.2342. The output is a pd.Series object.
+Now load some data. We use a GNSS height time series, which is can be downloaded from the repository in discotimes/examples/G103.txt. Note that we use file_reader, which can handle different types of input data like .tenv3, .txyz2, .txt, .csv and netcdf. Data in .txt or .csv files should have a variable column named <code>'Height'</code> (default, otherwise define variable), and a date column <code>('Year')</code>, specifying the date like <code>2000.2342</code>. The output is a pd.Series object.
 
 You can also input the variable names as column indices (e.g., <code>variable = 2</code>). Please refer to, e.g., http://geodesy.unr.edu/gps_timeseries/README_txyz2.txt, http://geodesy.unr.edu/gps_timeseries/tenv3/IGS14/0ARK.tenv3, for more information on .tenv3 and .txyz2 files. 
 
@@ -274,7 +274,7 @@ The trace was compressed after running the model. That means we only retain the 
 # dt_model.run(keep_trace=True,**settings['run_settings'])
 ```
 
-The un-compressed trace will then be available in dt_model.trace['full_trace']
+The un-compressed trace will then be available in <code>dt_model.trace['full_trace']</code>
 
 To save and load the model use:
 
@@ -314,7 +314,7 @@ As can be seen, the 4 chains behave differently. Chain 2 is here selected as the
 
 #### Statistics
 
-Check chain_stats to see the loo-scores and other statistics, which are derived with pm.compare() (https://docs.pymc.io/notebooks/model_comparison.html)
+Check chain_stats to see the loo-scores and other statistics, which are derived with <code>pm.compare()</code> (https://docs.pymc.io/notebooks/model_comparison.html)
 
 
 ```python
@@ -433,14 +433,14 @@ dt_model.chain_stats['best_loo']
 
 
 There are different options to select the most appropriate model, see Oelsmann et al., 2021. These are:
-* 'avg_best_loo': This is takes into account the average (across the ensemble) estimated number of cp, as well as the loo-statistic (medium conservative choice)
-* 'best_loo': Selects the best model solely based on loo (least conservative choice)
-* 'lowest_p_loo': Selects the model according to the lowest number of effective parameters (p_loo) (most conservative choice)
+* <code>'avg_best_loo'</code>: This is takes into account the average (across the ensemble) estimated number of cp, as well as the loo-statistic (medium conservative choice)
+* <code>'best_loo'</code>: Selects the best model solely based on loo (least conservative choice)
+* <code>'lowest_p_loo'</code>: Selects the model according to the lowest number of effective parameters (p_loo) (most conservative choice)
 
-A recommendation is to use 'avg_best_loo' for GNSS data and 'lowest_p_loo' for noiser data such as SATTG time series.
+A recommendation is to use <code>'avg_best_loo'</code> for GNSS data and <code>'lowest_p_loo'</code> for noiser data such as SATTG time series.
 
 #### Trace
-The Trace is an dictionary of arviz.InferenceData objects https://arviz-devs.github.io/arviz/api/generated/arviz.InferenceData.html:
+The Trace is an dictionary of <code>arviz.InferenceData</code> objects https://arviz-devs.github.io/arviz/api/generated/arviz.InferenceData.html:
 
 
 ```python
@@ -663,13 +663,13 @@ optional arguments:
 ```
 
 * You can fit single or multiple files, by using the filename(s) as arguments. 
-* Declare the VARIABLE name (or column index) as shown for the file_reader function.
-* The output is stored in OUTPUT_DIRECTORY (this is a required field).
+* Declare the <code>VARIABLE</code>  name (or column index) as shown for the file_reader function.
+* The output is stored in <code>OUTPUT_DIRECTORY</code>  (this is a required field).
 * Use different resampling periods, such as 'D', 'W', 'M' and 'Y' (for now irregular hourly data is not supported yet).
-* In case multiple time series are fitted you can concatenate the output together in one single netcdf file (use -c), otherwise a file of type -t OUTPUT_TYPE is saved.
-* Custom settings can be set using a SETTING_FILE. Parameters in the SETTING_FILE overwrite the standard settings, [see model setup](#setup).
+* In case multiple time series are fitted you can concatenate the output together in one single netcdf file (use <code>-c</code>), otherwise a file of <code>type -t OUTPUT_TYPE</code>  is saved.
+* Custom settings can be set using a <code>SETTING_FILE</code> . Parameters in the <code>SETTING_FILE</code>  overwrite the standard settings, [see model setup](#setup).
     * To define your own custom settings the best strategy is to copy the example settings-file from https://github.com/oelsmann/discotimes/blob/master/discotimes/tests/custom_settings.py to a directory of your choice
-    * Change the parameters, and define the location of your custom settings-file with -s SETTING_FILE
+    * Change the parameters, and define the location of your custom settings-file with <code>-s SETTING_FILE</code> 
 
 
 
