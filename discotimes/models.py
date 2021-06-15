@@ -1,3 +1,24 @@
+#    GPLv3 License
+
+#    DiscOTimeS: Automated estimation of trends, discontinuities and nonlinearities
+#    in geophysical time series
+#    Copyright (C) 2021  Julius Oelsmann
+
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+
+
 from theano.tensor import *
 from theano import tensor
 from arviz import *
@@ -14,7 +35,7 @@ class discotimes_model(pm.model.Model):
     type pm.model.Model
     """
     
-    def __init__(self, observed=None,name='', model=None,change_trend=False,n_changepoints=5,offsets_std=1,p_=0.1,
+    def __init__(self, observed=None,name='',change_trend=False,n_changepoints=5,offsets_std=1,p_=0.1,
                       sigma_noise=1.,trend_inc_sigma=0.01,annual_cycle=False,change_offsets=True,
                  estimate_offset_sigma=False,estimate_trend_inc_sigma=False,post_seismic=False,
                  AR1=False,distribute_offsets=False,robust_reg=False,initial_values={},**kwargs):
@@ -62,7 +83,7 @@ class discotimes_model(pm.model.Model):
             {'n_changepoints':n_changepoints,'p_':p_,'positions':positions,'offsets':offsets}
         
         """
-        super().__init__(name,model)
+        super().__init__(name)
 
         
         x=observed.x

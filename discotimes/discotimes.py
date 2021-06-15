@@ -34,11 +34,9 @@ import arviz as az
 import os
 import datetime
 import copy
-from .models import *
+from models import *
 
 
-    
-    
     
 
 class discotimes:
@@ -482,7 +480,7 @@ class discotimes:
         axs[0].set_ylabel('Height')
         axs[1].set_ylabel('Height')
         if save:
-            plt.savefig(save_dir+save_name)
+            plt.savefig(save_dir+self.name)
     
     def positions_to_date(self,positions):
         """converts numeric positions to dates
@@ -590,8 +588,7 @@ class discotimes:
             else:
                 ff2.iloc[0]=np.vstack([0,trend_err,offset,start_pos[0]]).flatten()
                 full_err=pd.concat([ff,ff2.iloc[0:1]]).sort_values(by='pos')
-
-
+        
 
         if post_seismic:
             new=(A*x[:,None])-s
@@ -622,6 +619,24 @@ class discotimes:
             end_pos=self.obs.series_clean.index[-1]
             diff=end_pos-start_pos        
             full_err = pd.DataFrame(np.vstack([0,trend_err,offset,start_pos]).T,columns=['pos','trend_inc_err','offsets','real_p'])
+            
+        elif not change_trend and change_offsets:
+            trend_v =np.asarray(trend)
+            trend_err_v=np.asarray(trend_err_v)
+            positions_v=self.positions_to_date(positions)  
+            #mult=mult*0
+            num=0
+            trend_v_sorted=pd.DataFrame([trend])
+            offset_change_sorted=pd.DataFrame(offset_change).drop_duplicates()
+            start_pos=self.obs.series_clean.index[offset_change_sorted.index.values]
+            end_pos=self.obs.series_clean.index[np.roll(offset_change_sorted.index.values-1,shift=-1)]
+            diff=end_pos-start_pos
+            full_err = pd.DataFrame(np.vstack([start_pos,start_pos,start_pos,start_pos]).T,columns=['pos','trend_inc_err','offsets','real_p'])            
+            full_err['trend_inc_err']=[float(trend_err_v)]*len(start_pos)
+            full_err['offsets']=offsets*mult
+            trend_err_v=pd.DataFrame([trend_err_v])
+            trend_v=pd.DataFrame([trend_v])
+            trend=pd.DataFrame([trend])
 
         else:
             positions_v=self.positions_to_date(positions*mult)
@@ -714,7 +729,7 @@ class discotimes:
     
     def to_nc(self):
         """converts output to xr.DataSet ~ netcdf 
-        
+
         """
         ALL_DATA=np.empty([21,1,self.sample_specs['cores'],self.specs['n_changepoints']+1])*np.nan
         iindex=0
@@ -728,8 +743,12 @@ class discotimes:
         first_obs=(self.obs.series_clean.index[0]-pd.Timestamp('1950')).days 
         for chain in np.arange(self.sample_specs['cores']):
             ymod=self.ymod(chain,**self.specs)
-            trend_v=pd.DataFrame(ymod['trend']).drop_duplicates().values.flatten()
+            variables=['trend','trend_err_v','positions_v']
+            for variable in variables:
+                if isinstance(ymod[variable],float):
+                    ymod[variable]=pd.DataFrame([ymod[variable]]) 
 
+            trend_v=pd.DataFrame(ymod['trend']).drop_duplicates().values.flatten()
             ALL_DATA[0, iindex, chain, :len(trend_v)]=trend_v # ymod['trend_v']
             ALL_DATA[1, iindex, chain, :len(ymod['trend_err_v'])]=ymod['trend_err_v']    
             ALL_DATA[2, iindex, chain, 0]=ymod['act_num']      
@@ -739,9 +758,9 @@ class discotimes:
             ALL_DATA[6, iindex, chain, 0]=sta['p_loo'][chain]
             # new values bro!
             ALL_DATA[10, iindex, chain, :len(ymod['trend_v_sorted'])]=ymod['trend_v_sorted']
-            ALL_DATA[11, iindex, chain, :len(ymod['trend_v_sorted'])]=(ymod['start_pos']-pd.Timestamp('1950')).days.astype(float)
-            ALL_DATA[12, iindex, chain, :len(ymod['trend_v_sorted'])]=(ymod['end_pos']-pd.Timestamp('1950')).days.astype(float)
-            ALL_DATA[13, iindex, chain, :len(ymod['trend_v_sorted'])]=ymod['diff'].days.astype(float)
+            ALL_DATA[11, iindex, chain, :len(ymod['start_pos'])]=(ymod['start_pos']-pd.Timestamp('1950')).days.astype(float)
+            ALL_DATA[12, iindex, chain, :len(ymod['end_pos'])]=(ymod['end_pos']-pd.Timestamp('1950')).days.astype(float)
+            ALL_DATA[13, iindex, chain, :len(ymod['diff'])]=ymod['diff'].days.astype(float)
 
             ALL_DATA[19, iindex, chain, :len(ymod['trend_un'])]=ymod['trend_un']
             ALL_DATA[20, iindex, chain, :len(ymod['offsets'])]=ymod['offsets']
@@ -796,9 +815,10 @@ class discotimes:
         ds['number_cp'].attrs={'units' : "",'long_name' : "number of change points"}
 
         ds['diff'].attrs={'units' : "days",'long_name' : "position difference"}
-
-
-        ds.attrs=self.specs
+        
+        for item in self.specs:
+            ds.attrs[item]=str(self.specs[item])
+        ds.attrs['initial_values']=str(self.specs['initial_values'])
         ds.attrs['info']="Data created with DiscoTimeS on "+str(datetime.date.today())
         return ds
 

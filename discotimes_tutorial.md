@@ -3,7 +3,7 @@
 -----
 <a id='top'></a>
 
-## discotimes
+## DiscoTimeS
 
 <div style="height:10px;"></div>
 
@@ -18,9 +18,9 @@
 -----
 
 <a id='why'></a>
-### Why discotimes?
+### Why DiscoTimeS?
 
-Discotimes is a tool to estimate DISCOntinuities in TIME Series. It is particularly designed for geophyiscal time series, i.e., long (~years to decadal) observations from GPS and 'satellite altimetry minus tide gauge' data, but can be applied to any kind of data with similar features.
+DiscoTimeS is a tool to estimate DISCOntinuities in TIME Series. It is particularly designed for geophyiscal time series, i.e., long (~years to decadal) observations from GPS and 'satellite altimetry minus tide gauge' data, but can be applied to any kind of data with similar features.
 It estimates the following components:
 
 * base trend
@@ -95,14 +95,21 @@ settings
 The dictionary contains information required for the priors ('model_settings'), the sampling ('run_settings'), as well as some information for a pre-fit discontinuity detection ('initial_run_settings'). 
 
 
-#### model settings
-You can change the model settings to meet your requirements: If you don't want to allow for trend changes (but still for discontinuities) set 'change_trend' to False. Change 'n_changepoints' for a different number of maximum allowed change points, or set the assumption initial probability of change points to occurr to 30% (p_ = 0.3). Please run info() for a full explanation of the parameter.
+#### Model settings
+You can change the model settings to meet your requirements: If you don't want to allow for trend changes (but still for discontinuities) set 'change_trend' to False. Change 'n_changepoints' for a different number of maximum allowed change points, or set the assumption initial probability of change points to occur to 30%, e.g.  
 
-#### run settings
+
+```python
+settings['model_settings']['p_']= 0.3
+```
+
+#### Run settings
 Control the number of cores ('cores') used or the number of sampling iterations ('n_samples'). You can also control settings of the NUTS sampler (https://docs.pymc.io/api/inference.html)
 
 #### Data input
-Now load some data. We use a GNSS height time series, which is can be downloaded from the repository in discotimes/examples/G103.txt. Note that we use file_reader, which can handle different types of input data like .tenv3, .txyz2, .txt, .csv and netcdf. Data in .txt or .csv files should have a variable column named 'Height', and a date column ('Year'), specifying the date like 2000.2342.
+Now load some data. We use a GNSS height time series, which is can be downloaded from the repository in discotimes/examples/G103.txt. Note that we use file_reader, which can handle different types of input data like .tenv3, .txyz2, .txt, .csv and netcdf. Data in .txt or .csv files should have a variable column named 'Height' (default, otherwise define variable), and a date column ('Year'), specifying the date like 2000.2342. The output is a pd.Series object.
+
+You can also input the variable names as column indices (e.g., variable = 2). Please refer to, e.g., http://geodesy.unr.edu/gps_timeseries/README_txyz2.txt, http://geodesy.unr.edu/gps_timeseries/tenv3/IGS14/0ARK.tenv3, for more information on .tenv3 and .txyz2 files. 
 
 
 ```python
@@ -120,7 +127,7 @@ series.plot()
 
 
 
-![png](discotimes_tutorial_files/discotimes_tutorial_10_1.png)
+![png](discotimes_tutorial_files/discotimes_tutorial_11_1.png)
 
 
 #### Model setup
@@ -185,7 +192,7 @@ dt_model.obs.series_clean.plot()
 
 
 
-![png](discotimes_tutorial_files/discotimes_tutorial_16_1.png)
+![png](discotimes_tutorial_files/discotimes_tutorial_17_1.png)
 
 
 [back to top ](#top)
@@ -269,21 +276,18 @@ The trace was compressed after running the model. That means we only retain the 
 
 The un-compressed trace will then be available in dt_model.trace['full_trace']
 
-
-```python
-
-dt_model.save(save_dir=filed)
-```
+To save and load the model use:
 
 
 ```python
-from discotimes.discotimes import discotimes as dt
 filed = 'discotimes/examples/'
+dt_model.save(save_dir=filed)
 dt_model=dt.load(save_dir=filed,name='G103')
-#dt_model.chain_stats = dt_model.chain_stats_update
 ```
 
 [back to top ](#top)
+
+<hr>
 
 ### Plotting and Visualization
 <a id='plotting-and-visualization'></a>
@@ -296,7 +300,7 @@ dt_model.plot()
 ```
 
 
-![png](discotimes_tutorial_files/discotimes_tutorial_28_0.png)
+![png](discotimes_tutorial_files/discotimes_tutorial_29_0.png)
 
 
 As can be seen, the 4 chains behave differently. Chain 2 is here selected as the best possible fit. The selection is based on the lowest loo, as also described in the paper. There are different model selection options as noted in the next section.
@@ -427,6 +431,13 @@ dt_model.chain_stats['best_loo']
     2
 
 
+
+There are different options to select the most appropriate model, see Oelsmann et al., 2021. These are:
+* 'avg_best_loo': This is takes into account the average (across the ensemble) estimated number of cp, as well as the loo-statistic (medium conservative choice)
+* 'best_loo': Selects the best model solely based on loo (least conservative choice)
+* 'lowest_p_loo': Selects the model according to the lowest number of effective parameters (p_loo) (most conservative choice)
+
+A recommendation is to use 'avg_best_loo' for GNSS data and 'lowest_p_loo' for noiser data such as SATTG time series.
 
 #### Trace
 The Trace is an dictionary of arviz.InferenceData objects https://arviz-devs.github.io/arviz/api/generated/arviz.InferenceData.html:
@@ -580,32 +591,108 @@ Attributes:
 
 
 
-This returns a xr.DataSet which can be stored as netcdf, with dt_model.to_nc().to_netcdf('save_dir'). Start positions, for example, are here stored as days since 1950-01-01.
+This returns a xr.DataSet which can be stored as netcdf, with:
 
 
 ```python
-%load_ext autoreload
-%autoreload 2
+save_dir = 'example_dir/example_name.nc'
+dt_model.to_nc().to_netcdf(save_dir)
 ```
 
+Start positions, for example, are here stored as days since 1950-01-01. The xr.Dataset has next to the chain-dimension the v-dim-dimension in which the different estimated time series segment information are stored. The x-dimension is defined in case multiple fits are appended to each other.
+
+To select the best chain use:
+
 
 ```python
-from discotimes.discotimes import discotimes as dt
-filed = 'discotimes/examples/'
-dt_model=dt.load(save_dir=filed,name='G103')
-#dt_model.chain_stats = dt_model.chain_stats_update
+selection = 'avg_best_loo' # example selection
+dt_model_nc = dt_model.to_nc()
+dt_model_nc = dt_model_nc.where((dt_model_nc.chain == dt_model_nc[selection]),drop=True).mean(dim='chain')
 ```
 
 [back to top ](#top)
+<hr>
 
 ### Command line interface - Fitting multiple files
 <a id='cli'></a>
 
 
+To start the time series analysis from the command line, activate your python environment in which you installed the pymc3, thenao and discotimes packages:
+
+
+```python
+conda activate <env_name>
+discofit.py --help
+```
+
+
+```python
+usage: use "discofit.py --help" for more information
+
+
+       Example:
+
+       discofit.py examples/*.txt -o tests/test_output/ -s tests/custom_settings.py
+
+       DiscoTimeS Copyright (C) 2021 Julius Oelsmann
+       This program comes with ABSOLUTELY NO WARRANTY;
+       This is free software, and you are welcome to redistribute it
+       under certain conditions;
+
+Settings to run discotimes
+
+positional arguments:
+  files
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -p, --plot            turn on plotting
+  -v VARIABLE, --variable VARIABLE
+                        variable name
+  -r RESAMPLE, --resample RESAMPLE
+                        resampling frequency, e.g. D, W, M, default: D
+  -o OUTPUT_DIRECTORY, --output_directory OUTPUT_DIRECTORY
+                        output_directory
+  -c, --concatenate     concatenate all files
+  -t OUTPUT_TYPE, --output_type OUTPUT_TYPE
+                        output type: netcdf or dt
+  -s SETTING_FILE, --setting_file SETTING_FILE
+                        define location of custom settings file
+  -i                    show program's version number and exit
+
+```
+
+* You can fit single or multiple files, by using the filename(s) as arguments. 
+* Declare the VARIABLE name (or column index) as shown for the file_reader function.
+* The output is stored in OUTPUT_DIRECTORY (this is a required field).
+* Use different resampling periods, such as 'D', 'W', 'M' and 'Y' (for now irregular hourly data is not supported yet).
+* In case multiple time series are fitted you can concatenate the output together in one single netcdf file (use -c), otherwise a file of type -t OUTPUT_TYPE is saved.
+* Custom settings can be set using a SETTING_FILE. Parameters in the SETTING_FILE overwrite the standard settings, [see model setup](#setup).
+    * To define your own custom settings the best strategy is to copy the example settings-file from https://github.com/oelsmann/discotimes/blob/master/discotimes/tests/custom_settings.py to a directory of your choice
+    * Change the parameters, and define the location of your custom settings-file with -s SETTING_FILE
+
+
+
+
+
 [back to top ](#top)
+<hr>
 
 ### References
 <a id='References'></a>
 
+
+Oelsmann, J.; Passaro, M.; Sánchez, L.; Dettmering, D.; Schwatke, C.; Seitz, F.; Bayesian modelling of piecewise trends and discontinuities to improve the estimation of coastal vertical land motion. Submitted to Journal of Geodesy, 2021
+
+### Data sources
+
+Blewitt G, Kreemer C, Hammond WC, Gazeaux J (2016) Midas robust trend estimator for accurate gps station velocities without step detection. Journal of Geophysical Research: Solid Earth 121(3):2054–2068, DOI 10.1002/2015JB01255    
+    
+Caron L, Ivins ER, Larour E, Adhikari S, Nilsson J, Blewitt G (2018) Gia model statistics for grace hydrology, cryosphere, and ocean science. Geophysical Research Letters 45(5):2203– 2212, DOI 10.1002/2017GL076644    
+    
+Frederikse T, Landerer F, Caron L, Adhikari S, Parkes D, Humphrey V, Dangendorf S, Hogarth P, Zanna L, Cheng L, Wu YH (2020) The causes of sea-level rise since 1900. Nature 584:393–397, DOI 10.1038/s41586-020-2591-3
+    
+Holgate SJ, Matthews A, Woodworth PL, Rickards LJ, Tamisiea ME, Bradshaw E, Fo-den  PR,  Gordon  KM,  Jevrejeva  S,  Pugh  J  (2013)  New  Data  Systems  and  Products at the  Permanent  Service  for  Mean  Sea  Level.  Journal  of  Coastal  Research  pp  493–504,  DOI  10.2112/JCOASTRES-D-12-00175.1,  URLhttps://doi.org/10.2112/JCOASTRES-D-12-00175.1    
+    
 
 [back to top ](#top)
