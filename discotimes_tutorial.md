@@ -38,10 +38,6 @@ The trends g(t) and offsets o(t) are therefore time dependent components of the 
 
 $y(t) = o(t) + g(t) + seas  + \eta$
 
-$$\Theta = \begin{pmatrix}\alpha & \beta\\
-\gamma & \delta
-\end{pmatrix}$$
-
 
 #### Model fitting
 
@@ -630,12 +626,12 @@ discofit.py --help
 
 
 ```console 
-usage: use "discofit.py --help" for more information
+usage: use "python discofit.py --help" for more information
 
 
        Example:
 
-       discofit.py examples/*.txt -o tests/test_output/ -s tests/custom_settings.py
+       python discofit.py examples/*.txt -o tests/test_output/ -s tests/custom_settings.py
 
        DiscoTimeS Copyright (C) 2021 Julius Oelsmann
        This program comes with ABSOLUTELY NO WARRANTY;
