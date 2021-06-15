@@ -38,6 +38,10 @@ The trends g(t) and offsets o(t) are therefore time dependent components of the 
 
 $y(t) = o(t) + g(t) + seas  + \eta$
 
+$$\Theta = \begin{pmatrix}\alpha & \beta\\
+\gamma & \delta
+\end{pmatrix}$$
+
 
 #### Model fitting
 
