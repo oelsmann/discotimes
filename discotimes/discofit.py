@@ -22,7 +22,6 @@
 
 # command line interface for discotimes
 
-
 from discotimes import discotimes as dt
 from model_settings import *
 from discotimes import file_reader
@@ -38,12 +37,12 @@ import pandas as pd
 
 def cli_input():
     
-    usage_text = 'use "%(prog)s --help" for more information \n \
+    usage_text = 'use "python %(prog)s --help" for more information \n \
       \n \
       \n \
       Example: \n \
       \n \
-      discofit.py examples/*.txt -o tests/test_output/ -s tests/custom_settings.py \n \
+      python discofit.py examples/*.txt -o tests/test_output/ -s tests/custom_settings.py \n \
       \n       DiscoTimeS Copyright (C) 2021 Julius Oelsmann \n \
       This program comes with ABSOLUTELY NO WARRANTY; \n \
       This is free software, and you are welcome to redistribute it \n \

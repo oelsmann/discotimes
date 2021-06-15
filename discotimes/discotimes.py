@@ -216,11 +216,14 @@ class discotimes:
             list of parameters to test
         """
         stats={}
-        for par in parameters:
-            sub_set=[]
-            for i in self.trace.posterior.chain.values:
-                sub_set.append(pm.geweke(self.trace.posterior[par][i,:], intervals=50)[:,1])
-            stats[par]=pd.DataFrame(np.asarray(sub_set).T,columns=self.trace.posterior.chain.values)
+        if hasattr(pm,'geweke'):
+            for par in parameters:
+                sub_set=[]
+                for i in self.trace.posterior.chain.values:
+                    sub_set.append(pm.geweke(self.trace.posterior[par][i,:], intervals=50)[:,1])
+                stats[par]=pd.DataFrame(np.asarray(sub_set).T,columns=self.trace.posterior.chain.values)
+        else:
+            stats['trend']=pd.DataFrame([np.nan]*10)
         self.convergence_stats = stats
         
                 
