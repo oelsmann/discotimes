@@ -92,11 +92,11 @@ settings
 
 
 
-The dictionary contains information required for the priors ('model_settings'), the sampling ('run_settings'), as well as some information for a pre-fit discontinuity detection ('initial_run_settings'). 
+The dictionary contains information required for the priors <code>('model_settings')</code>, the sampling <code>('run_settings')</code>, as well as some information for a pre-fit discontinuity detection <code>('initial_run_settings')</code>. 
 
 
 #### Model settings
-You can change the model settings to meet your requirements: If you don't want to allow for trend changes (but still for discontinuities) set 'change_trend' to False. Change 'n_changepoints' for a different number of maximum allowed change points, or set the assumption initial probability of change points to occur to 30%, e.g.  
+You can change the model settings to meet your requirements: If you don't want to allow for trend changes (but still for discontinuities) set <code>'change_trend'</code> to <code>False</code>. Change <code>'n_changepoints'</code> for a different number of maximum allowed change points, or set the assumption initial probability of change points to occur to 30%, e.g.  
 
 
 ```python
@@ -104,12 +104,12 @@ settings['model_settings']['p_']= 0.3
 ```
 
 #### Run settings
-Control the number of cores ('cores') used or the number of sampling iterations ('n_samples'). You can also control settings of the NUTS sampler (https://docs.pymc.io/api/inference.html)
+Control the number of cores ('cores')<code></code> used or the number of sampling iterations ('n_samples')<code></code>. You can also control settings of the NUTS sampler (https://docs.pymc.io/api/inference.html)
 
 #### Data input
-Now load some data. We use a GNSS height time series, which is can be downloaded from the repository in discotimes/examples/G103.txt. Note that we use file_reader, which can handle different types of input data like .tenv3, .txyz2, .txt, .csv and netcdf. Data in .txt or .csv files should have a variable column named 'Height' (default, otherwise define variable), and a date column ('Year'), specifying the date like 2000.2342. The output is a pd.Series object.
+Now load some data. We use a GNSS height time series, which is can be downloaded from the repository in discotimes/examples/G103.txt. Note that we use file_reader, which can handle different types of input data like .tenv3, .txyz2, .txt, .csv and netcdf. Data in .txt or .csv files should have a variable column named <code>'Height'</code> (default, otherwise define variable), and a date column <code>('Year')</code>, specifying the date like 2000.2342. The output is a pd.Series object.
 
-You can also input the variable names as column indices (e.g., variable = 2). Please refer to, e.g., http://geodesy.unr.edu/gps_timeseries/README_txyz2.txt, http://geodesy.unr.edu/gps_timeseries/tenv3/IGS14/0ARK.tenv3, for more information on .tenv3 and .txyz2 files. 
+You can also input the variable names as column indices (e.g., <code>variable = 2</code>). Please refer to, e.g., http://geodesy.unr.edu/gps_timeseries/README_txyz2.txt, http://geodesy.unr.edu/gps_timeseries/tenv3/IGS14/0ARK.tenv3, for more information on .tenv3 and .txyz2 files. 
 
 
 ```python
@@ -620,13 +620,13 @@ dt_model_nc = dt_model_nc.where((dt_model_nc.chain == dt_model_nc[selection]),dr
 To start the time series analysis from the command line, activate your python environment in which you installed the pymc3, thenao and discotimes packages:
 
 
-```python
+```console
 conda activate <env_name>
 discofit.py --help
 ```
 
 
-```python
+```console 
 usage: use "discofit.py --help" for more information
 
 
