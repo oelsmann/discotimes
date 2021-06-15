@@ -36,7 +36,7 @@ It estimates the following components:
 
 The trends g(t) and offsets o(t) are therefore time dependent components of the model:
 
-"""math
+"""
 y(t) = o(t) + g(t) + seas  + \eta  
 """
 
