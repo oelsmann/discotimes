@@ -12,4 +12,3 @@ discotimes.egg-info/requires.txt
 discotimes.egg-info/top_level.txt
 discotimes/tests/__init__.py
 discotimes/tests/custom_settings.py
-discotimes/tests/test_discotimes.py

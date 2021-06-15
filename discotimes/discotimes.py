@@ -34,7 +34,7 @@ import arviz as az
 import os
 import datetime
 import copy
-from models import *
+from .models import *
 
 
     
@@ -636,7 +636,7 @@ class discotimes:
             diff=end_pos-start_pos
             full_err = pd.DataFrame(np.vstack([start_pos,start_pos,start_pos,start_pos]).T,columns=['pos','trend_inc_err','offsets','real_p'])            
             full_err['trend_inc_err']=[float(trend_err_v)]*len(start_pos)
-            full_err['offsets']=offsets*mult
+            full_err['offsets']=offset_change_sorted.values
             trend_err_v=pd.DataFrame([trend_err_v])
             trend_v=pd.DataFrame([trend_v])
             trend=pd.DataFrame([trend])
