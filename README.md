@@ -52,7 +52,7 @@ Check out the brief [Tutorial](https://github.com/oelsmann/discotimes/blob/maste
 ## References <span id="citation"><span>
     
     
-Oelsmann, J.; Passaro, M.; Sánchez, L.; Dettmering, D.; Schwatke, C.; Seitz, F.; Bayesian modelling of piecewise trends and discontinuities to improve the estimation of coastal vertical land motion. Submitted to Journal of Geodesy, 2021
+Oelsmann, J., Passaro, M., Sánchez, L. et al. Bayesian modelling of piecewise trends and discontinuities to improve the estimation of coastal vertical land motion. J Geod 96, 62 (2022). https://doi.org/10.1007/s00190-022-01645-6
 
 ### Data sources
 
