@@ -41,7 +41,7 @@ either activate an existing conda environment or create a new one with:
 
 download the required packages with:
 
-     $ pip install git+https://github.com/oelsmann/discotimes 
+     $ pip install git+https://github.com/oelsmann/discotimes#egg=discotimes 
      $ conda install -c conda-forge theano-pymc -y
       
 ## Getting started
